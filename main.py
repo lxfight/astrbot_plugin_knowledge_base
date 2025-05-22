@@ -18,7 +18,7 @@ from astrbot.api.star import StarTools
 from .installation import ensure_vector_db_dependencies
 from .utils.embedding import EmbeddingUtil
 from .utils.text_splitter import TextSplitterUtil
-from .utils.file_parser import parse_file_content
+from .utils.file_parser import FileParser
 from .vector_store.base import VectorDBBase, Document
 from .vector_store.faiss_store import FaissStore
 from .vector_store.milvus_lite_store import MilvusLiteStore
@@ -99,6 +99,9 @@ class KnowledgeBasePlugin(Star):
                 chunk_overlap=self.config.get("text_chunk_overlap"),
             )
             logger.info("文本分割工具初始化完成。")
+
+            self.file_parser = FileParser()
+            logger.info("文件解析器初始化完成。")
 
             db_type = self.config.get("vector_db_type", "faiss")
             dimension = self.config.get("embedding_dimension", 1536)
@@ -754,7 +757,7 @@ class KnowledgeBasePlugin(Star):
             logger.debug(
                 f"正在处理第 {files_processed_count}/{len(files_to_process_info)} 个文件: '{original_filename}'..."
             )
-            content = await parse_file_content(file_path)
+            content = await self.file_parser.parse_file_content(file_path)
             if content is None:
                 message = f"无法解析文件 '{original_filename}' 或文件为空，已跳过。"
                 yield event.plain_result(message)
