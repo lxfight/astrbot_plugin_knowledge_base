@@ -1,9 +1,16 @@
 # -*- coding: utf-8 -*-
 # /vector_store/milvus_lite_store.py
-from typing import List, Optional, Tuple
-from .base import VectorDBBase, Document
+from typing import List, Optional, Tuple, Dict, Any
+from .base import (
+    VectorDBBase,
+    Document,
+    ProcessingBatch,
+    DEFAULT_BATCH_SIZE,
+    MAX_RETRIES,
+)
 from astrbot.api import logger
 from pymilvus import MilvusClient, FieldSchema, DataType, CollectionSchema
+import asyncio
 
 
 class MilvusLiteStore(VectorDBBase):
@@ -164,69 +171,167 @@ class MilvusLiteStore(VectorDBBase):
             # 如果集合已存在，也确保索引和加载
             await self._ensure_index_and_load(collection_name)
 
-        data_to_insert = []
+        all_doc_ids: List[str] = []
 
-        texts_to_embed = [
-            doc.text_content for doc in documents if doc.embedding is None
-        ]
-        embeddings_list = []
-        if texts_to_embed:
-            embeddings_list = await self.embedding_util.get_embeddings_async(texts_to_embed)
+        # 创建一个异步队列来存放待处理的批次
+        processing_queue: asyncio.Queue[ProcessingBatch] = asyncio.Queue()
 
-        embed_idx = 0
-        for doc in documents:
-            embedding_to_use = None
-            if doc.embedding is not None:
-                embedding_to_use = doc.embedding
-            elif (
-                embed_idx < len(embeddings_list)
-                and embeddings_list[embed_idx] is not None
-            ):
-                embedding_to_use = embeddings_list[embed_idx]
-                embed_idx += 1
+        # 2. 生产者：将所有文档按批次放入队列
+        num_batches = 0
+        for i in range(0, len(documents), DEFAULT_BATCH_SIZE):
+            batch_docs = documents[i : i + DEFAULT_BATCH_SIZE]
+            await processing_queue.put(ProcessingBatch(documents=batch_docs))
+            num_batches += 1
+        logger.info(f"已将 {len(documents)} 份文档分成 {num_batches} 个批次放入队列。")
 
-            if embedding_to_use:
-                entity = {
-                    "embedding": embedding_to_use,  # 对应 schema 中的 'embedding' 字段
-                    "text_content": doc.text_content,  # 对应 schema 中的 'text_content' 字段
-                }
-                # 处理动态元数据字段
-                for key, value in doc.metadata.items():
-                    if key not in entity:  # 避免覆盖固定字段
-                        if (
-                            isinstance(value, str)
-                            and len(value) > self.varchar_max_length
-                        ):
-                            logger.warning(
-                                f"元数据字段 '{key}' 的值过长 ({len(value)} > {self.varchar_max_length})，将被截断。"
-                            )
-                            entity[key] = value[: self.varchar_max_length]
-                        else:
-                            entity[key] = value
-                data_to_insert.append(entity)
-            else:
-                logger.warning(
-                    f"未能为文档 '{doc.text_content[:50]}...' 获取 embedding，将跳过。"
+        # 3. 消费者：从队列中取出批次进行处理
+        processed_batches_count = 0
+        failed_batches_discarded_count = 0
+
+        # total_batches_to_process = num_batches # 用于跟踪最初需要处理的批次总数
+
+        while processed_batches_count < num_batches + failed_batches_discarded_count:
+            try:
+                # 设置超时，避免在所有批次处理完后无限等待
+                processing_batch = await asyncio.wait_for(
+                    processing_queue.get(), timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                if processing_queue.empty() and processed_batches_count >= num_batches:
+                    logger.info("队列已空且所有初始批次已处理/丢弃，退出处理循环。")
+                    break  # 所有任务可能已完成
+                else:
+                    logger.warning(
+                        "队列为空，但仍有待处理任务或可能存在并发消费者未完成，继续等待..."
+                    )
+                    continue  # 继续等待
+
+            current_docs_in_batch = processing_batch.documents
+            current_retry_count = processing_batch.retry_count
+
+            log_prefix = f"[批次 ({len(current_docs_in_batch)} docs), 重试 {current_retry_count}/{MAX_RETRIES}]"
+            logger.info(f"{log_prefix} 正在处理...")
+
+            try:
+                current_batch_texts_to_embed = []
+                docs_needing_embedding_in_batch = []
+
+                # 区分需要生成嵌入的文档和已包含嵌入的文档
+                for doc in current_docs_in_batch:
+                    if doc.embedding is None:
+                        current_batch_texts_to_embed.append(doc.text_content)
+                        docs_needing_embedding_in_batch.append(doc)
+
+                batch_embeddings_generated: List[List[float]] = []
+                if current_batch_texts_to_embed:
+                    batch_embeddings_generated = (
+                        await self.embedding_util.get_embeddings_async(
+                            current_batch_texts_to_embed
+                        )
+                    )
+                    logger.info(
+                        f"{log_prefix} 成功为 {len(batch_embeddings_generated)} 个文本生成了嵌入。"
+                    )
+
+                data_to_insert_for_batch: List[Dict[str, Any]] = []
+
+                embed_idx = 0
+                for doc in current_docs_in_batch:
+                    embedding_to_use = None
+                    if doc.embedding is not None:
+                        embedding_to_use = doc.embedding
+                    elif (
+                        embed_idx < len(batch_embeddings_generated)
+                        and batch_embeddings_generated[embed_idx] is not None
+                    ):
+                        embedding_to_use = batch_embeddings_generated[embed_idx]
+                        embed_idx += 1
+
+                    if embedding_to_use:
+                        entity = {
+                            "embedding": embedding_to_use,
+                            "text_content": doc.text_content,
+                        }
+                        # 处理动态元数据字段
+                        for key, value in doc.metadata.items():
+                            if key not in entity:
+                                if (
+                                    isinstance(value, str)
+                                    and len(value) > self.varchar_max_length
+                                ):
+                                    logger.warning(
+                                        f"{log_prefix} 元数据字段 '{key}' 的值过长 ({len(value)} > {self.varchar_max_length})，将被截断。"
+                                    )
+                                    entity[key] = value[: self.varchar_max_length]
+                                else:
+                                    entity[key] = value
+                        data_to_insert_for_batch.append(entity)
+                    else:
+                        logger.warning(
+                            f"{log_prefix} 未能为文档 '{doc.text_content[:50]}...' 获取 embedding，将跳过。"
+                        )
+
+                if not data_to_insert_for_batch:
+                    logger.info(f"{log_prefix} 没有有效的实体可供插入，跳过此批次。")
+                    processed_batches_count += 1
+                    processing_queue.task_done()  # 标记此任务已完成
+                    continue
+
+                # 将 Milvus insert 操作包装在 asyncio.to_thread 中
+                insert_result = await asyncio.to_thread(
+                    self.client.insert,
+                    collection_name=collection_name,
+                    data=data_to_insert_for_batch,
                 )
 
-        if not data_to_insert:
-            logger.info("没有有效的实体可供插入。")
-            return []
+                # Milvus 返回的ids是 primary key，可能是 int，转为 str
+                batch_added_ids = [str(pk) for pk in insert_result["ids"]]
+                all_doc_ids.extend(batch_added_ids)
+                logger.info(
+                    f"{log_prefix} 成功向 Milvus 集合 '{collection_name}' 添加了 {len(batch_added_ids)} 个文档。"
+                )
 
-        try:
-            insert_result = self.client.insert(
-                collection_name=collection_name, data=data_to_insert
-            )
-            logger.info(
-                f"向 Milvus Lite 集合 '{collection_name}' 添加了 {len(insert_result['ids'])} 个文档。"
-            )
-            return [str(pk) for pk in insert_result["ids"]]
-        except Exception as e:
-            logger.error(
-                f"向 Milvus Lite 集合 '{collection_name}' 插入数据失败: {e}",
-                exc_info=True,
-            )
-            return []
+                processed_batches_count += 1
+                processing_queue.task_done()  # 标记此任务已完成
+
+            except Exception as e:
+                logger.error(
+                    f"{log_prefix} 处理失败: {e}", exc_info=True
+                )  # 打印完整的堆栈信息
+
+                if current_retry_count < MAX_RETRIES:
+                    processing_batch.retry_count += 1
+                    await processing_queue.put(
+                        processing_batch
+                    )  # 将批次重新放回队列尾部
+                    logger.warning(
+                        f"{log_prefix} 将批次重新放入队列进行重试 (当前重试次数: {processing_batch.retry_count})。"
+                    )
+                else:
+                    logger.error(
+                        f"{log_prefix} 批次达到最大重试次数 ({MAX_RETRIES})，将丢弃此批次。"
+                    )
+                    failed_batches_discarded_count += 1
+
+                processed_batches_count += 1  # 无论成功或失败，原始批次都被“处理”了一次
+                processing_queue.task_done()  # 标记此任务已完成 (无论是重试还是丢弃)
+
+            finally:
+                # 显式清理本批次可能占用的内存
+                del current_batch_texts_to_embed
+                del docs_needing_embedding_in_batch
+                del batch_embeddings_generated
+                del data_to_insert_for_batch  # 清理 Milvus 插入实体列表
+                del current_docs_in_batch  # 清理当前批次文档的引用
+                del processing_batch  # 清理批次对象的引用
+
+        # 所有批次处理完毕后的最终总结
+        logger.info(
+            f"向 Milvus Lite 集合 '{collection_name}' 完成添加操作。总共处理了 {len(documents)} 个原始文档。"
+        )
+        logger.info(f"成功添加 {len(all_doc_ids)} 个文档。")
+        logger.info(f"其中有 {failed_batches_discarded_count} 个批次因重试失败被丢弃。")
+        return all_doc_ids
 
     async def search(
         self,

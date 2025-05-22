@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 
+DEFAULT_BATCH_SIZE = 10  # 默认批处理大小
+MAX_RETRIES = 3  # 最大重试次数
 
 @dataclass
 class Document:
@@ -11,6 +13,11 @@ class Document:
         default_factory=dict
     )  # 例如: {'source': 'file.txt', 'chunk_id': 0}
     id: Optional[str] = None  # 文档在向量数据库中的唯一 ID
+
+@dataclass
+class ProcessingBatch:
+    documents: List[Document]
+    retry_count: int = 0  # 记录当前批次的重试次数
 
 
 class VectorDBBase(ABC):

@@ -3,7 +3,13 @@ import numpy as np
 import os
 import pickle
 from typing import List, Dict, Tuple
-from .base import VectorDBBase, Document
+from .base import (
+    VectorDBBase,
+    Document,
+    ProcessingBatch,
+    DEFAULT_BATCH_SIZE,
+    MAX_RETRIES,
+)
 from astrbot.api import logger
 import asyncio
 
@@ -81,69 +87,173 @@ class FaissStore(VectorDBBase):
         self, collection_name: str, documents: List[Document]
     ) -> List[str]:
         if not await self.collection_exists(collection_name):
-            # raise ValueError(f"Faiss 集合 '{collection_name}' 不存在。请先创建。")
             logger.warning(f"Faiss 集合 '{collection_name}' 不存在。将尝试自动创建。")
             await self.create_collection(collection_name)
 
-        texts_to_embed = [
-            doc.text_content for doc in documents if doc.embedding is None
-        ]
-        embeddings_list = []
-        if texts_to_embed:
-            embeddings_list = await self.embedding_util.get_embeddings_async(texts_to_embed)
+        all_doc_ids: List[str] = []
 
-        valid_embeddings = []
-        processed_documents = []
-        doc_ids = []
+        # 获取 Faiss 索引和文档存储的引用
+        faiss_index = self.indexes[collection_name]
+        doc_storage = self.doc_storages[collection_name]
 
-        embed_idx = 0
-        for doc in documents:
-            if doc.embedding is None:
-                if (
-                    embed_idx < len(embeddings_list)
-                    and embeddings_list[embed_idx] is not None
-                ):
-                    doc.embedding = embeddings_list[embed_idx]
-                    valid_embeddings.append(doc.embedding)
-                    processed_documents.append(doc)
+        # 创建一个异步队列来存放待处理的批次
+        processing_queue: asyncio.Queue[ProcessingBatch] = asyncio.Queue()
+
+        # 1. 生产者：将所有文档按批次放入队列
+        num_batches = 0
+        for i in range(0, len(documents), DEFAULT_BATCH_SIZE):
+            batch_docs = documents[i : i + DEFAULT_BATCH_SIZE]
+            await processing_queue.put(ProcessingBatch(documents=batch_docs))
+            num_batches += 1
+        logger.info(f"已将 {len(documents)} 份文档分成 {num_batches} 个批次放入队列。")
+
+        # 2. 消费者：从队列中取出批次进行处理
+        processed_batches_count = 0
+        failed_batches_discarded_count = 0
+
+        while processed_batches_count < num_batches + failed_batches_discarded_count:
+            # 尝试从队列获取一个批次，如果队列为空，则等待
+            # 这里需要一个机制来判断所有初始批次是否都已处理完毕，
+            # 否则可能会无限等待。对于单个消费者，最简单的是在所有任务完成后使用join。
+            # 或者，如果队列为空且没有新的生产者，可以直接退出循环。
+            try:
+                processing_batch = await asyncio.wait_for(
+                    processing_queue.get(), timeout=1.0
+                )  # 设置超时，避免死锁
+            except asyncio.TimeoutError:
+                # 如果队列为空且等待超时，表示所有初始批次可能已经处理完毕或者卡住了
+                if processing_queue.empty():
+                    break  # 退出循环，所有任务可能已完成
                 else:
-                    logger.warning(
-                        f"未能为文档 '{doc.text_content[:50]}...' 生成 embedding，将跳过。"
+                    continue  # 继续等待
+
+            current_docs_in_batch = processing_batch.documents
+            current_retry_count = processing_batch.retry_count
+
+            log_prefix = f"[批次 ({len(current_docs_in_batch)} docs), 重试 {current_retry_count}/{MAX_RETRIES}]"
+            logger.info(f"{log_prefix} 正在处理...")
+
+            try:
+                current_batch_texts_to_embed = []
+                docs_needing_embedding_in_batch = []
+
+                for doc in current_docs_in_batch:
+                    if doc.embedding is None:
+                        current_batch_texts_to_embed.append(doc.text_content)
+                        docs_needing_embedding_in_batch.append(doc)
+
+                batch_embeddings_generated: List[List[float]] = []
+                if current_batch_texts_to_embed:
+                    batch_embeddings_generated = (
+                        await self.embedding_util.get_embeddings_async(
+                            current_batch_texts_to_embed
+                        )
                     )
-                embed_idx += 1
-            else:  # 如果文档已包含 embedding
-                valid_embeddings.append(doc.embedding)
-                processed_documents.append(doc)
+                    logger.info(
+                        f"{log_prefix} 成功为 {len(batch_embeddings_generated)} 个文本生成了嵌入。"
+                    )
 
-        if not valid_embeddings:
-            logger.info("没有有效的 embedding 可供添加。")
-            return []
+                valid_embeddings_for_batch: List[List[float]] = []
+                processed_documents_for_batch: List[Document] = []
 
-        def _add_sync():
-            index = self.indexes[collection_name]
-            storage = self.doc_storages[collection_name]
+                embed_idx = 0
+                for doc in current_docs_in_batch:
+                    if doc.embedding is None:
+                        if (
+                            embed_idx < len(batch_embeddings_generated)
+                            and batch_embeddings_generated[embed_idx] is not None
+                        ):
+                            doc.embedding = batch_embeddings_generated[embed_idx]
+                            valid_embeddings_for_batch.append(doc.embedding)
+                            processed_documents_for_batch.append(doc)
+                        else:
+                            logger.warning(
+                                f"{log_prefix} 未能为文档 '{doc.text_content[:50]}...' 生成 embedding，将跳过。"
+                            )
+                        embed_idx += 1
+                    else:
+                        valid_embeddings_for_batch.append(doc.embedding)
+                        processed_documents_for_batch.append(doc)
 
-            new_embeddings_np = np.array(valid_embeddings).astype("float32")
-            faiss.normalize_L2(
-                new_embeddings_np
-            )  # Faiss 通常与归一化向量配合使用效果更好，尤其是内积索引
+                if not valid_embeddings_for_batch:
+                    logger.info(
+                        f"{log_prefix} 没有有效的 embedding 可供添加，跳过此批次。"
+                    )
+                    processed_batches_count += 1
+                    processing_queue.task_done()  # 标记此任务已完成
+                    continue
 
-            start_id = index.ntotal
-            index.add(new_embeddings_np)
+                def _add_batch_sync(
+                    batch_embeds: List[List[float]], batch_proc_docs: List[Document]
+                ):
+                    nonlocal faiss_index, doc_storage
 
-            current_ids = []
-            for i, doc in enumerate(processed_documents):
-                doc_id = str(start_id + i)  # Faiss 内部使用从0开始的整数ID
-                doc.id = doc_id  # 将内部ID存回Document对象
-                storage.append(doc)
-                current_ids.append(doc_id)
+                    new_embeddings_np = np.array(batch_embeds).astype("float32")
+                    faiss.normalize_L2(new_embeddings_np)
 
-            self._save_collection(collection_name)
-            return current_ids
+                    start_id = faiss_index.ntotal
+                    faiss_index.add(new_embeddings_np)
 
-        doc_ids = await asyncio.to_thread(_add_sync)
-        logger.info(f"向 Faiss 集合 '{collection_name}' 添加了 {len(doc_ids)} 个文档。")
-        return doc_ids
+                    current_batch_ids = []
+                    for j, doc in enumerate(batch_proc_docs):
+                        doc_id = str(start_id + j)
+                        doc.id = doc_id
+                        doc_storage.append(doc)
+                        current_batch_ids.append(doc_id)
+                    return current_batch_ids
+
+                batch_added_ids = await asyncio.to_thread(
+                    _add_batch_sync,
+                    valid_embeddings_for_batch,
+                    processed_documents_for_batch,
+                )
+                all_doc_ids.extend(batch_added_ids)
+                logger.info(f"{log_prefix} 成功添加了 {len(batch_added_ids)} 个文档。")
+
+                processed_batches_count += 1
+                processing_queue.task_done()  # 标记此任务已完成
+
+            except Exception as e:
+                logger.error(f"{log_prefix} 处理失败: {e}")
+
+                if current_retry_count < MAX_RETRIES:
+                    processing_batch.retry_count += 1
+                    await processing_queue.put(
+                        processing_batch
+                    )  # 将批次重新放回队列尾部
+                    logger.warning(
+                        f"{log_prefix} 将批次重新放入队列进行重试 (当前重试次数: {processing_batch.retry_count})。"
+                    )
+                else:
+                    logger.error(
+                        f"{log_prefix} 批次达到最大重试次数 ({MAX_RETRIES})，将丢弃此批次。"
+                    )
+                    failed_batches_discarded_count += 1
+
+                processed_batches_count += 1  # 无论成功或失败，原始批次都被“处理”了一次
+                processing_queue.task_done()  # 标记此任务已完成 (无论是重试还是丢弃)
+
+            finally:
+                # 显式清理本批次可能占用的内存
+                del current_batch_texts_to_embed
+                del docs_needing_embedding_in_batch
+                del batch_embeddings_generated
+                del valid_embeddings_for_batch
+                del processed_documents_for_batch
+                del current_docs_in_batch  # 清理当前批次文档的引用
+                del processing_batch  # 清理批次对象的引用
+
+        # 等待所有任务完成（尽管上面的循环在单消费者模式下已经做到了类似的事情）
+        await processing_queue.join() # 如果有多个消费者协程，这个是必要的
+
+        # 所有批次处理完毕后，保存集合（如果需要持久化）
+        self._save_collection(collection_name)
+
+        logger.info(
+            f"向 Faiss 集合 '{collection_name}' 完成添加操作。总共处理了 {len(documents)} 个原始文档，成功添加 {len(all_doc_ids)} 个文档。"
+        )
+        logger.info(f"其中 {failed_batches_discarded_count} 个批次因重试失败被丢弃。")
+        return all_doc_ids
 
     async def search(
         self, collection_name: str, query_text: str, top_k: int = 5

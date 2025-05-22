@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
 # vector_store/milvus_store.py
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 from urllib.parse import urlparse
-from .base import VectorDBBase, Document
-from astrbot.api import logger  # 假设 astrbot.api 是正确的
+from .base import (
+    VectorDBBase,
+    Document,
+    ProcessingBatch,
+    DEFAULT_BATCH_SIZE,
+    MAX_RETRIES,
+)
+from astrbot.api import logger
 from pymilvus import (
     connections,
     utility,
@@ -11,9 +17,10 @@ from pymilvus import (
     DataType,
     FieldSchema,
     CollectionSchema,
-    Index,  # 用于类型提示
+    # Index,  # 用于类型提示
 )
 from pymilvus.exceptions import ConnectionConfigException, MilvusException
+import asyncio
 
 try:
     from pymilvus import LoadState
@@ -38,9 +45,11 @@ class MilvusStore(VectorDBBase):
         )  # data_path 传给基类，但此类不用
         self.kwargs = kwargs
         # 可以为加载等待设置默认值，如果kwargs中没有提供
-        self.kwargs.setdefault("load_wait_timeout", 60) # 默认等待60秒
-        self.kwargs.setdefault("load_wait_loops", 12) # 默认轮询12次 (配合5秒延时即60秒)
-        self.kwargs.setdefault("load_loop_delay", 5) # 轮询间隔
+        self.kwargs.setdefault("load_wait_timeout", 60)  # 默认等待60秒
+        self.kwargs.setdefault(
+            "load_wait_loops", 12
+        )  # 默认轮询12次 (配合5秒延时即60秒)
+        self.kwargs.setdefault("load_loop_delay", 5)  # 轮询间隔
         # 处理 host 参数，移除协议头
         parsed_uri = urlparse(host)
         if parsed_uri.scheme and parsed_uri.netloc:  # 如果 host 看起来像一个完整的 URL
@@ -239,15 +248,15 @@ class MilvusStore(VectorDBBase):
                 logger.warning(
                     f"集合 '{collection_name}' 的 embedding 字段上没有索引。将尝试创建 {self.index_type}。"
                 )
-                index_obj = Index(
-                    collection,
-                    field_name="embedding",
-                    index_params={
-                        "index_type": self.index_type,
-                        "metric_type": self.metric_type,
-                        "params": self.index_params_config,
-                    },
-                )
+                # index_obj = Index(
+                #     collection,
+                #     field_name="embedding",
+                #     index_params={
+                #         "index_type": self.index_type,
+                #         "metric_type": self.metric_type,
+                #         "params": self.index_params_config,
+                #     },
+                # )
                 # collection.create_index 已经被废弃，应该使用 Index 对象来管理
                 # 如果 Index 对象创建时没有自动创建，则需要调用一个方法，但通常是自动的
                 # 若是 pymilvus < 2.2.0:
@@ -475,6 +484,7 @@ class MilvusStore(VectorDBBase):
             if not self._is_connected:
                 raise ConnectionError("Milvus 服务未连接，无法添加文档。")
 
+        # 1. 获取并准备 Collection 对象 (在批处理循环前执行一次)
         collection = await self._get_collection_with_retry(collection_name)
         if not collection:
             auto_create = self.kwargs.get("auto_create_collection", True)
@@ -499,89 +509,193 @@ class MilvusStore(VectorDBBase):
         else:  # 集合已存在，确保索引和加载
             await self._ensure_index_and_load(collection)
 
-        data_to_insert = []
-        texts_to_embed = [
-            doc.text_content for doc in documents if doc.embedding is None
-        ]
-        embeddings_list = []
-        if texts_to_embed:
+        all_doc_ids: List[str] = []
+
+        # 创建一个异步队列来存放待处理的批次
+        processing_queue: asyncio.Queue[ProcessingBatch] = asyncio.Queue()
+
+        # 2. 生产者：将所有文档按批次放入队列
+        num_batches = 0
+        for i in range(0, len(documents), DEFAULT_BATCH_SIZE):
+            batch_docs = documents[i : i + DEFAULT_BATCH_SIZE]
+            await processing_queue.put(ProcessingBatch(documents=batch_docs))
+            num_batches += 1
+        logger.info(f"已将 {len(documents)} 份文档分成 {num_batches} 个批次放入队列。")
+
+        # 3. 消费者：从队列中取出批次进行处理
+        processed_batches_count = 0
+        failed_batches_discarded_count = 0
+
+        # 这里通过检查 processed_batches_count 和 num_batches 来判断何时退出，
+        # 即使有重试，最终也会被计入 processed_batches_count (成功或丢弃)
+        while processed_batches_count < num_batches + failed_batches_discarded_count:
             try:
-                embeddings_list = await self.embedding_util.get_embeddings_async(
-                    texts_to_embed
+                # 设置超时，避免在队列空时无限等待
+                processing_batch = await asyncio.wait_for(
+                    processing_queue.get(), timeout=10.0
                 )
-            except Exception as e_embed:
-                logger.error(f"批量获取 embeddings 失败: {e_embed}", exc_info=True)
-                return []
+            except asyncio.TimeoutError:
+                if (
+                    processing_queue.empty()
+                ):  # 如果队列确实空了，并且所有初始批次都已处理或丢弃
+                    logger.info(
+                        "队列已空，且所有原始批次均已处理或丢弃。退出处理循环。"
+                    )
+                    break
+                else:  # 队列不空但等待超时，可能是因为并发任务或队列任务卡住
+                    logger.warning("队列不空，但等待批次超时，继续等待...")
+                    continue
 
-        embed_idx = 0
-        for doc in documents:
-            embedding_to_use = None
-            if doc.embedding is not None:
-                embedding_to_use = doc.embedding
-            elif (
-                embed_idx < len(embeddings_list)
-                and embeddings_list[embed_idx] is not None
-            ):
-                embedding_to_use = embeddings_list[embed_idx]
-                embed_idx += 1
+            current_docs_in_batch = processing_batch.documents
+            current_retry_count = processing_batch.retry_count
 
-            if embedding_to_use:
-                entity = {
-                    "embedding": embedding_to_use,
-                    "text_content": doc.text_content,
-                }
-                for key, value in doc.metadata.items():
-                    if key not in entity:
-                        if (
-                            isinstance(value, str)
-                            and len(value) > self.varchar_max_length
-                        ):
-                            logger.warning(
-                                f"元数据字段 '{key}' 的值过长 ({len(value)} > {self.varchar_max_length})，将被截断。"
-                            )
-                            entity[key] = value[: self.varchar_max_length]
-                        elif not isinstance(
-                            value, (str, int, float, bool, list)
-                        ):  # list for some Milvus versions/dynamic schema
-                            logger.warning(
-                                f"元数据字段 '{key}' 的类型 '{type(value)}' 不是常见支持类型，将转换为字符串。"
-                            )
-                            entity[key] = str(value)
-                        else:
-                            entity[key] = value
-                data_to_insert.append(entity)
-            else:
-                logger.warning(
-                    f"未能为文档 '{doc.text_content[:50]}...' 获取 embedding，将跳过。"
+            log_prefix = f"[批次 ({len(current_docs_in_batch)} docs), 重试 {current_retry_count}/{MAX_RETRIES}]"
+            logger.info(f"{log_prefix} 正在处理...")
+
+            try:
+                current_batch_texts_to_embed = []
+                # docs_needing_embedding_in_batch = [] # 此变量在循环中不再直接使用
+
+                # 区分需要生成嵌入的文档和已包含嵌入的文档
+                for doc in current_docs_in_batch:
+                    if doc.embedding is None:
+                        current_batch_texts_to_embed.append(doc.text_content)
+                        # docs_needing_embedding_in_batch.append(doc) # 不需要，直接赋值给 doc.embedding
+
+                batch_embeddings_generated: List[List[float]] = []
+                if current_batch_texts_to_embed:
+                    batch_embeddings_generated = (
+                        await self.embedding_util.get_embeddings_async(
+                            current_batch_texts_to_embed
+                        )
+                    )
+                    logger.info(
+                        f"{log_prefix} 成功为 {len(batch_embeddings_generated)} 个文本生成了嵌入。"
+                    )
+
+                data_to_insert_for_batch: List[Dict[str, Any]] = []
+
+                embed_idx = 0
+                for doc in current_docs_in_batch:
+                    embedding_to_use = None
+                    if doc.embedding is not None:
+                        embedding_to_use = doc.embedding
+                    elif (
+                        embed_idx < len(batch_embeddings_generated)
+                        and batch_embeddings_generated[embed_idx] is not None
+                    ):
+                        embedding_to_use = batch_embeddings_generated[embed_idx]
+                        embed_idx += 1
+
+                    if embedding_to_use:
+                        entity = {
+                            "embedding": embedding_to_use,
+                            "text_content": doc.text_content,
+                        }
+                        # 处理动态元数据字段
+                        for key, value in doc.metadata.items():
+                            if key not in entity:  # 避免覆盖固定字段
+                                if (
+                                    isinstance(value, str)
+                                    and len(value) > self.varchar_max_length
+                                ):
+                                    logger.warning(
+                                        f"{log_prefix} 元数据字段 '{key}' 的值过长 ({len(value)} > {self.varchar_max_length})，将被截断。"
+                                    )
+                                    entity[key] = value[: self.varchar_max_length]
+                                elif not isinstance(
+                                    value, (str, int, float, bool, list)
+                                ):
+                                    logger.warning(
+                                        f"{log_prefix} 元数据字段 '{key}' 的类型 '{type(value)}' 不是常见支持类型，将转换为字符串。"
+                                    )
+                                    entity[key] = str(value)
+                                else:
+                                    entity[key] = value
+                        data_to_insert_for_batch.append(entity)
+                    else:
+                        logger.warning(
+                            f"{log_prefix} 未能为文档 '{doc.text_content[:50]}...' 获取 embedding，将跳过。"
+                        )
+
+                if not data_to_insert_for_batch:
+                    logger.info(f"{log_prefix} 没有有效的实体可供插入，跳过此批次。")
+                    processed_batches_count += 1
+                    processing_queue.task_done()  # 标记此任务已完成
+                    continue
+
+                # 将 Milvus insert 操作包装在 asyncio.to_thread 中
+                insert_result = await asyncio.to_thread(
+                    collection.insert, data_to_insert_for_batch
                 )
 
-        if not data_to_insert:
-            logger.info("没有有效的实体可供插入。")
-            return []
+                # 对于标准 Milvus，flush 很重要以确保数据对搜索可见
+                if self.kwargs.get("auto_flush_after_insert", True):
+                    logger.info(f"{log_prefix} 正在刷新集合 '{collection_name}'...")
+                    await asyncio.to_thread(collection.flush)  # flush 也是同步操作
+                    logger.info(f"{log_prefix} 集合 '{collection_name}' 刷新完成。")
 
-        try:
-            insert_result = collection.insert(data_to_insert)
-            # 对于标准 Milvus，flush 很重要以确保数据对搜索可见，特别是对于某些一致性级别
-            if self.kwargs.get("auto_flush_after_insert", True):
-                logger.info(f"正在刷新集合 '{collection_name}'...")
-                collection.flush()
-                logger.info(f"集合 '{collection_name}' 刷新完成。")
+                # Milvus 返回的 primary_keys 是 int，转为 str
+                batch_added_ids = [str(pk) for pk in insert_result.primary_keys]
+                all_doc_ids.extend(batch_added_ids)
+                logger.info(
+                    f"{log_prefix} 成功向远程 Milvus 集合 '{collection_name}' (alias: {self.alias}) 添加了 {len(batch_added_ids)} 个文档。"
+                )
 
-            logger.info(
-                f"向远程 Milvus 集合 '{collection_name}' (alias: {self.alias}) 添加了 {len(insert_result.primary_keys)} 个文档。"
-            )
-            return [str(pk) for pk in insert_result.primary_keys]
-        except Exception as e:
-            logger.error(
-                f"向远程 Milvus 集合 '{collection_name}' (alias: {self.alias}) 插入数据失败: {e}",
-                exc_info=True,
-            )
-            if (
-                "connection refused" in str(e).lower()
-                or "failed to connect" in str(e).lower()
-            ):
-                self._is_connected = False
-            return []
+                processed_batches_count += 1
+                processing_queue.task_done()  # 标记此任务已完成
+
+            except Exception as e:
+                logger.error(
+                    f"{log_prefix} 处理失败: {e}", exc_info=True
+                )  # 打印完整的堆栈信息
+
+                # 检查连接错误，如果连接断开，设置 _is_connected 为 False
+                if (
+                    "connection refused" in str(e).lower()
+                    or "failed to connect" in str(e).lower()
+                    or "rpc error" in str(e).lower()  # 常见的网络或服务错误
+                ):
+                    self._is_connected = False
+                    logger.error(
+                        f"{log_prefix} 检测到 Milvus 连接问题，将尝试重新初始化连接。"
+                    )
+                    # 这里可以考虑在重试前尝试重新初始化连接
+                    # await self.initialize() # 如果需要每个批次都重新连接，但通常不推荐
+
+                if current_retry_count < MAX_RETRIES:
+                    processing_batch.retry_count += 1
+                    await processing_queue.put(
+                        processing_batch
+                    )  # 将批次重新放回队列尾部
+                    logger.warning(
+                        f"{log_prefix} 将批次重新放入队列进行重试 (当前重试次数: {processing_batch.retry_count})。"
+                    )
+                else:
+                    logger.error(
+                        f"{log_prefix} 批次达到最大重试次数 ({MAX_RETRIES})，将丢弃此批次。"
+                    )
+                    failed_batches_discarded_count += 1
+
+                processed_batches_count += 1  # 无论成功或失败，原始批次都被“处理”了一次
+                processing_queue.task_done()  # 标记此任务已完成 (无论是重试还是丢弃)
+
+            finally:
+                # 显式清理本批次可能占用的内存
+                del current_batch_texts_to_embed
+                del batch_embeddings_generated
+                del data_to_insert_for_batch  # 清理 Milvus 插入实体列表
+                del current_docs_in_batch  # 清理当前批次文档的引用
+                del processing_batch  # 清理批次对象的引用
+
+        logger.info(
+            f"向远程 Milvus 集合 '{collection_name}' (alias: {self.alias}) 完成添加操作。"
+        )
+        logger.info(
+            f"总共处理了 {len(documents)} 个原始文档，成功添加 {len(all_doc_ids)} 个文档。"
+        )
+        logger.info(f"其中有 {failed_batches_discarded_count} 个批次因重试失败被丢弃。")
+        return all_doc_ids
 
     async def search(
         self,

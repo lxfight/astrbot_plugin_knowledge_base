@@ -1,9 +1,19 @@
-<h1 align="center">AstrBot 知识库插件</h1>
+---
+
+<h1 align="center">🚀 AstrBot 知识库插件 🚀</h1>
 
 <p align="center">
   <strong>为你的 AstrBot 注入专属知识，打造更智能的对话体验！</strong>
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/github/stars/Soulter/AstrBot-Knowledge-Base-Plugin?style=for-the-badge&color=FFD700" alt="GitHub Stars">
+  <img src="https://img.shields.io/github/forks/Soulter/AstrBot-Knowledge-Base-Plugin?style=for-the-badge&color=blue" alt="GitHub Forks">
+  <img src="https://img.shields.io/github/issues-closed/Soulter/AstrBot-Knowledge-Base-Plugin?style=for-the-badge&color=green" alt="Closed Issues">
+  <img src="https://img.shields.io/github/issues-open/Soulter/AstrBot-Knowledge-Base-Plugin?style=for-the-badge&color=orange" alt="Open Issues">
+  <img src="https://visitor-badge.glitch.me/badge?page_id=Soulter.AstrBot-Knowledge-Base-Plugin" alt="Visitors">
+  <img src="https://img.shields.io/github/license/Soulter/AstrBot-Knowledge-Base-Plugin?style=for-the-badge" alt="License">
+</p>
 
 <p align="center">
   <code>astrbot_plugin_knowledge_base</code> 是一个为 <a href="https://github.com/Soulter/AstrBot">AstrBot</a> 聊天机器人框架量身定制的强大知识库插件。
@@ -13,9 +23,9 @@
 
 ---
 
-本插件处于公开测试期，期间可能会经历版本的快速迭代。
+本项目目前处于公开测试期，期间可能会经历版本的快速迭代。我们欢迎您的试用、反馈与贡献！
 
-可以添加QQ群获得更快的帮助:953245617
+感谢每一位关注者和贡献者，您的 Star 和 Fork 是我们持续开发的最大动力！如果您觉得这个项目对您有所帮助，请不吝点亮那颗小星星 ✨。
 
 ---
 ## 🚀 核心功能一览
@@ -26,7 +36,7 @@
 | :------------------------------------ | :------------------------------------------------------------------- | :--: |
 | 🧠 **智能 RAG 集成**                    | 自动检索知识增强 LLM 回答，更精准、更相关                               | 🎯   |
 | 💾 **多向量数据库**                     | 支持 Faiss, Milvus Lite, Milvus Server，满足不同规模需求                | 🗂️   |
-| ✍️ **灵活内容导入**                     | 通过指令添加文本、本地文件 (`.txt`, `.md`) 或 URL 轻松构建知识库         | 📥   |
+| ✍️ **灵活内容导入**                     | 通过指令添加文本、本地文件 (`.txt`, `.md`)        | 📥   |
 | 🗣️ **便捷指令交互**                     | `/kb` 系列指令，覆盖创建、搜索、切换、管理等全流程                       | 💬   |
 | ⚙️ **高度可配置**                       | 自定义 Embedding、文本处理、RAG 策略，深度定制您的知识引擎             | 🛠️   |
 | 📦 **持久化存储**                       | 知识数据与用户偏好安全存储，插件更新无忧                               | 🛡️   |
@@ -54,17 +64,18 @@
    将 `astrbot_plugin_knowledge_base` 文件夹放置到 AstrBot 的 `plugins` 目录下。
 
 ### 2. 安装依赖
-
-   根据您选择的向量数据库类型，通过 pip 安装相应依赖：
-   *   **Faiss**: `pip install faiss-cpu` (或 `faiss-gpu` 搭配 CUDA)
-   *   **Milvus Lite**: `pip install pymilvus`
+        [新版本插件已经实现依赖的自动判断及安装]
+   *   **Faiss**
+   *   **Milvus Lite**:
    *   **Milvus Server**: 确保您有一个正在运行的 Milvus 服务实例。
 
    💡 **提示**: 如果希望使用 `astrbot_plugin_embedding_adapter` 自动配置 Embedding，请确保该插件也已安装。
 
 ---
 
-## 🎮 快速开始：指令体验
+## 🎮 快速开始：指令
+
+| 在新的会话中一定要使用：`/kb use [知识库名称]` 来激活知识库的使用，激活后`/kb`相关指令在不填写知识库名称的情况下会默认使用指定的知识库
 
 通过向机器人发送以 `/kb` (或别名 `知识库`) 开头的指令来与知识库互动：
 
@@ -104,18 +115,40 @@
    ✨ 生成包含知识库信息的、更优质的回答
 ```
 
+---
 
-## 🤝 贡献与支持
+## 🛣️ 未来发展路线图 (Roadmap)
 
-欢迎通过 Pull Requests 或 Issues 为本项目贡献代码、提出建议或报告问题！
+我们致力于持续改进 `astrbot_plugin_knowledge_base`，使其成为 AstrBot 生态中最强大、最灵活的知识管理工具。以下是我们近期和远期的主要开发计划：
 
-⭐️ 如果这个插件对您有帮助，请给个 Star 吧！
+### 1. 🌐 增强文件解析能力
+
+当前插件主要支持 `.txt` 和 `.md` 格式的文件导入。为了满足更广泛的知识库构建需求，我们将引入一个功能更强大的文件解析器：
+*   **支持更多文件格式：** 计划新增对 `.pdf`, `.docx`, `.xlsx`, `.pptx` 等常见文档格式的直接解析与导入。
+*   **网页内容抓取：** 探索支持直接从 URL 抓取并解析 HTML 页面内容，将其纳入知识库。
+*   **OCR 功能集成：** 未来可能考虑集成光学字符识别（OCR）技术，以处理图片中的文本信息，进一步拓宽知识来源。
+通过这些改进，用户将能够更便捷地将各种形式的现有资料转化为可供机器人学习的知识，极大地降低知识库构建的门槛。
+
+### 2. 🧩 开放底层知识库数据管理接口
+
+目前，插件的核心功能主要通过 `/kb` 指令对外提供。为了促进 AstrBot 插件生态的繁荣，我们将对核心知识库管理逻辑进行解耦，并提供更底层的 API 接口：
+*   **模块化与可重用性：** 将知识数据的增删改查、向量化、检索等核心功能抽象为独立的、可调用的方法。
+*   **为其他插件赋能：** 其他 AstrBot 插件开发者将能够直接调用这些底层方法，来构建自己的、更复杂的知识库应用场景，而无需重复实现基础的数据管理逻辑。
+*   **构建知识服务基础：** 旨在将本插件的核心逻辑演变为 AstrBot 平台的一个基础知识服务层，为整个框架提供统一、高效的知识存储与检索能力，提升 AstrBot 的整体智能化水平。
+
+我们相信，这些改进将极大地提升插件的实用性和扩展性，为 AstrBot 用户和开发者带来更丰富的可能性。
 
 ---
 
-<p align="center">
-  由 <a href="https://github.com/lxfight">lxfight</a> 开发与维护
-</p>
-<p align="center">
-  <a href="https://github.com/lxfight/astrbot_plugin_knowledge_base">回到项目仓库</a>
-</p>
+## 🤝 社区与支持
+
+欢迎通过 Pull Requests 或 Issues 为本项目贡献代码、提出建议或报告问题！您的参与是我们前进的动力。
+
+*   **QQ群：** 遇到问题或希望进行更快的交流，可以添加QQ群:`953245617`。问题验证填写关键词 `lxfight` 即可。
+
+⭐️ **如果您觉得这个插件对您有所帮助，请给个 Star 吧！** 您的支持对我们至关重要。
+
+## 📜 许可证
+本项目遵循 MIT 许可证。请查看 [LICENSE](LICENSE) 文件以获取更多信息。
+
+---

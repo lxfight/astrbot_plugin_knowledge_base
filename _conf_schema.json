@@ -74,7 +74,7 @@
     "text_chunk_size": {
         "description": "文本分块大小 (字符数)",
         "type": "int",
-        "default": 1000
+        "default": 300
     },
     "text_chunk_overlap": {
         "description": "文本分块重叠大小 (字符数)",
