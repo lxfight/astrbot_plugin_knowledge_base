@@ -23,6 +23,7 @@ from .vector_store.base import VectorDBBase, Document
 from .vector_store.faiss_store import FaissStore
 from .vector_store.milvus_lite_store import MilvusLiteStore
 from .vector_store.milvus_store import MilvusStore
+from .installation import ensure_vector_db_dependencies
 
 
 PLUGIN_REGISTER_NAME = "astrbot_plugin_knowledge_base"
