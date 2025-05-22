@@ -15,7 +15,7 @@ from astrbot.core.utils.session_waiter import (
 )
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import StarTools
-
+from .installation import ensure_vector_db_dependencies
 from .utils.embedding import EmbeddingUtil
 from .utils.text_splitter import TextSplitterUtil
 from .utils.file_parser import parse_file_content
@@ -23,7 +23,7 @@ from .vector_store.base import VectorDBBase, Document
 from .vector_store.faiss_store import FaissStore
 from .vector_store.milvus_lite_store import MilvusLiteStore
 from .vector_store.milvus_store import MilvusStore
-from .installation import ensure_vector_db_dependencies
+
 
 PLUGIN_REGISTER_NAME = "astrbot_plugin_knowledge_base"
 # 定义知识库内容标记

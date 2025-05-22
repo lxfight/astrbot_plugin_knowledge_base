@@ -1,2 +1,5 @@
 numpy>=2.2.0
 langchain_text_splitters>=0.3.8
+faiss-cpu>=1.10.0
+pymilvus>=2.5.0
+
