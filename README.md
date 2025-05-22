@@ -6,14 +6,6 @@
   <strong>为你的 AstrBot 注入专属知识，打造更智能的对话体验！</strong>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/github/stars/Soulter/AstrBot-Knowledge-Base-Plugin?style=for-the-badge&color=FFD700" alt="GitHub Stars">
-  <img src="https://img.shields.io/github/forks/Soulter/AstrBot-Knowledge-Base-Plugin?style=for-the-badge&color=blue" alt="GitHub Forks">
-  <img src="https://img.shields.io/github/issues-closed/Soulter/AstrBot-Knowledge-Base-Plugin?style=for-the-badge&color=green" alt="Closed Issues">
-  <img src="https://img.shields.io/github/issues-open/Soulter/AstrBot-Knowledge-Base-Plugin?style=for-the-badge&color=orange" alt="Open Issues">
-  <img src="https://visitor-badge.glitch.me/badge?page_id=Soulter.AstrBot-Knowledge-Base-Plugin" alt="Visitors">
-  <img src="https://img.shields.io/github/license/Soulter/AstrBot-Knowledge-Base-Plugin?style=for-the-badge" alt="License">
-</p>
 
 <p align="center">
   <code>astrbot_plugin_knowledge_base</code> 是一个为 <a href="https://github.com/Soulter/AstrBot">AstrBot</a> 聊天机器人框架量身定制的强大知识库插件。
