@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from astrbot.api import logger, AstrBotConfig
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.provider import ProviderRequest
-from ..constants import KB_START_MARKER, KB_END_MARKER, USER_PROMPT_DELIMITER_IN_HISTORY
+from .constants import KB_START_MARKER, KB_END_MARKER, USER_PROMPT_DELIMITER_IN_HISTORY
 
 if TYPE_CHECKING:
     from ..vector_store.base import VectorDBBase

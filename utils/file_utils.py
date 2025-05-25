@@ -7,7 +7,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from astrbot.api import logger
-from ..constants import ALLOWED_FILE_EXTENSIONS, MAX_DOWNLOAD_FILE_SIZE_MB
+from ..core.constants import ALLOWED_FILE_EXTENSIONS, MAX_DOWNLOAD_FILE_SIZE_MB
 
 
 async def download_file(url: str, destination_folder: str) -> Optional[str]:

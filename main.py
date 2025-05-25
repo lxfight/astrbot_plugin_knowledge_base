@@ -14,8 +14,8 @@ from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import StarTools
 
 
-from . import constants
-from .installation import ensure_vector_db_dependencies
+from .core import constants
+from .utils.installation import ensure_vector_db_dependencies
 from .utils.embedding import EmbeddingUtil
 from .utils.text_splitter import TextSplitterUtil
 from .utils.file_parser import FileParser
