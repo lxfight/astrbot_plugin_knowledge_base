@@ -17,7 +17,7 @@ from pymilvus import (
     DataType,
     FieldSchema,
     CollectionSchema,
-    # Index,  # 用于类型提示
+    Index,
 )
 from pymilvus.exceptions import ConnectionConfigException, MilvusException
 import asyncio
@@ -248,19 +248,17 @@ class MilvusStore(VectorDBBase):
                 logger.warning(
                     f"集合 '{collection_name}' 的 embedding 字段上没有索引。将尝试创建 {self.index_type}。"
                 )
-                # index_obj = Index(
-                #     collection,
-                #     field_name="embedding",
-                #     index_params={
-                #         "index_type": self.index_type,
-                #         "metric_type": self.metric_type,
-                #         "params": self.index_params_config,
-                #     },
-                # )
-                # collection.create_index 已经被废弃，应该使用 Index 对象来管理
-                # 如果 Index 对象创建时没有自动创建，则需要调用一个方法，但通常是自动的
-                # 若是 pymilvus < 2.2.0:
-                # collection.create_index(field_name="embedding", index_params=index_obj.params)
+                index_obj = Index(
+                    collection,
+                    field_name="embedding",
+                    index_params={
+                        "index_type": self.index_type,
+                        "metric_type": self.metric_type,
+                        "params": self.index_params_config,
+                    },
+                    using=self.alias
+                )
+                collection.create_index(field_name="embedding", index_params=index_obj.params)
                 logger.info(
                     f"为集合 '{collection_name}' 的 'embedding' 字段创建索引 {self.index_type} 成功 (通过 Index 对象)。"
                 )
