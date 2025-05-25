@@ -105,9 +105,6 @@ class EmbeddingUtil:
             batch_texts = [text for _, text in batch_indices_texts]
 
             try:
-                logger.info(
-                    f"处理批次 {batch_start // batch_size + 1}，文本数量: {len(batch_texts)}"
-                )
                 response = await self.client.embeddings.create(
                     input=batch_texts, model=self.model_name
                 )

@@ -130,8 +130,8 @@ class FaissStore(VectorDBBase):
             current_docs_in_batch = processing_batch.documents
             current_retry_count = processing_batch.retry_count
 
-            log_prefix = f"[批次 ({len(current_docs_in_batch)} docs), 重试 {current_retry_count}/{MAX_RETRIES}]"
-            logger.info(f"{log_prefix} 正在处理...")
+            log_prefix = f"[批次 ({processed_batches_count} docs), 重试 {current_retry_count}/{MAX_RETRIES}]"
+            logger.debug(f"{log_prefix} 正在处理...")
 
             try:
                 current_batch_texts_to_embed = []
@@ -149,7 +149,7 @@ class FaissStore(VectorDBBase):
                             current_batch_texts_to_embed
                         )
                     )
-                    logger.info(
+                    logger.debug(
                         f"{log_prefix} 成功为 {len(batch_embeddings_generated)} 个文本生成了嵌入。"
                     )
 
@@ -176,7 +176,7 @@ class FaissStore(VectorDBBase):
                         processed_documents_for_batch.append(doc)
 
                 if not valid_embeddings_for_batch:
-                    logger.info(
+                    logger.debug(
                         f"{log_prefix} 没有有效的 embedding 可供添加，跳过此批次。"
                     )
                     processed_batches_count += 1
@@ -208,7 +208,7 @@ class FaissStore(VectorDBBase):
                     processed_documents_for_batch,
                 )
                 all_doc_ids.extend(batch_added_ids)
-                logger.info(f"{log_prefix} 成功添加了 {len(batch_added_ids)} 个文档。")
+                logger.debug(f"{log_prefix} 成功添加了 {len(batch_added_ids)} 个文档。")
 
                 processed_batches_count += 1
                 processing_queue.task_done()  # 标记此任务已完成

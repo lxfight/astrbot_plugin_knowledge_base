@@ -69,7 +69,6 @@ class KnowledgeBasePlugin(Star):
     async def _initialize_components(self):
         try:
             logger.info("知识库插件开始初始化...")
-            print("知识库插件开始初始化...")
             # Embedding Util
             try:
                 embedding_plugin = self.context.get_registered_star(

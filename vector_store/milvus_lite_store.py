@@ -210,7 +210,7 @@ class MilvusLiteStore(VectorDBBase):
             current_retry_count = processing_batch.retry_count
 
             log_prefix = f"[批次 ({len(current_docs_in_batch)} docs), 重试 {current_retry_count}/{MAX_RETRIES}]"
-            logger.info(f"{log_prefix} 正在处理...")
+            logger.debug(f"{log_prefix} 正在处理...")
 
             try:
                 current_batch_texts_to_embed = []
@@ -229,7 +229,7 @@ class MilvusLiteStore(VectorDBBase):
                             current_batch_texts_to_embed
                         )
                     )
-                    logger.info(
+                    logger.debug(
                         f"{log_prefix} 成功为 {len(batch_embeddings_generated)} 个文本生成了嵌入。"
                     )
 
@@ -272,7 +272,7 @@ class MilvusLiteStore(VectorDBBase):
                         )
 
                 if not data_to_insert_for_batch:
-                    logger.info(f"{log_prefix} 没有有效的实体可供插入，跳过此批次。")
+                    logger.warning(f"{log_prefix} 没有有效的实体可供插入，跳过此批次。")
                     processed_batches_count += 1
                     processing_queue.task_done()  # 标记此任务已完成
                     continue

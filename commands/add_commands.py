@@ -7,6 +7,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from ..vector_store.base import Document
 from ..utils import file_utils
+from ..core.constants import ALLOWED_FILE_EXTENSIONS
 
 if TYPE_CHECKING:
     from ..main import KnowledgeBasePlugin
@@ -151,10 +152,7 @@ async def handle_add_file(
             yield event.plain_result(
                 f"检测到文件夹路径，正在遍历支持的文件: {path_or_url} ..."
             )
-            # Assuming ALLOWED_FILE_EXTENSIONS can be used for filtering if needed, though original code only specified .txt, .md here
-            supported_extensions = tuple(
-                ext for ext in file_utils.ALLOWED_EXTENSIONS if ext in [".txt", ".md"]
-            )  # Original code was more restrictive
+            supported_extensions = tuple(ALLOWED_FILE_EXTENSIONS)
             found_files_count = 0
             for root, _, files in os.walk(path_or_url):
                 for filename in files:
@@ -223,7 +221,7 @@ async def handle_add_file(
             )
             for chunk in chunks
         ]
-
+        yield event.plain_result(f"开始添加文件：{original_filename}")
         try:
             doc_ids = await plugin.vector_db.add_documents(
                 target_collection, documents_to_add
