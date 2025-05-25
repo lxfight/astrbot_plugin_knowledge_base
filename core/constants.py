@@ -30,4 +30,31 @@ ALLOWED_FILE_EXTENSIONS = [
     ".jpeg",
     ".png",
 ]
+TEXT_EXTENSIONS = {".txt", ".md"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+MARKITDOWN_EXTENSIONS = {
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".pptx",
+    ".ppt",
+    ".xlsx",
+    ".xls",
+    ".html",
+    ".htm",
+    ".json",
+    ".xml",
+    ".csv",
+    ".epub",
+}
 MAX_DOWNLOAD_FILE_SIZE_MB = 50
+COMMON_ENCODINGS = [
+    "utf-8",
+    "gbk",
+    "gb2312",
+    "gb18030",
+    "utf-16",
+    "latin-1",
+    "iso-8859-1",
+]
+READ_FILE_LIMIT = 4096  # 4KB
