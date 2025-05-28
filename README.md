@@ -246,7 +246,8 @@
             <li>表格数据：<code>.xlsx</code>, <code>.xls</code>, <code>.csv</code></li>
             <li>网页与结构化数据：<code>.html</code>, <code>.htm</code>, <code>.json</code>, <code>.xml</code></li>
             <li>电子书：<code>.epub</code></li>
-            <li>图片内容提取 (OCR)：<code>.jpg</code>, <code>.jpeg</code>, <code>.png</code> (依赖相应 OCR 配置)</li>
+            <li>图片内容提取 (LLM)：<code>.jpg</code>, <code>.jpeg</code>, <code>.png</code> (依赖相应 LLM 配置)</li>
+            <li>音频内容提取 (LLM): <code>.mp3</code>, <code>.flac</code>, <code>.wav</code>, <code>.ogg</code>, <code>.acc</code>, <code>.aiff</code>
           </ul>
         </li>
         <li><strong>用户价值</strong>：告别手动复制粘贴！现在可以轻松地将您已有的各种格式文档、报告、网页内容直接转化为机器人知识库的一部分，极大拓宽了知识获取的边界，提升了知识库构建效率。</li>

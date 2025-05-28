@@ -90,5 +90,11 @@
         "description": "当指定的知识库集合不存在时，是否自动创建",
         "type": "bool",
         "default": true
+    },
+    "LLM_model": {
+        "description": "是否启用LLM大模型解析文件",
+        "type": "bool",
+        "default": false,
+        "hint": "如果启用，则会消耗AstrBot当前使用的提供商Token。（仅支持OpenAI兼容的提供商）"
     }
 }

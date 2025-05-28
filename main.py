@@ -18,7 +18,7 @@ from .core import constants
 from .utils.installation import ensure_vector_db_dependencies
 from .utils.embedding import EmbeddingUtil
 from .utils.text_splitter import TextSplitterUtil
-from .utils.file_parser import FileParser
+from .utils.file_parser import FileParser, LLM_Config
 from .vector_store.base import VectorDBBase
 from .vector_store.faiss_store import FaissStore
 from .vector_store.milvus_lite_store import MilvusLiteStore
@@ -102,7 +102,11 @@ class KnowledgeBasePlugin(Star):
             logger.info("文本分割工具初始化完成。")
 
             # File Parser
-            self.file_parser = FileParser(context=self.context)
+            self.llm_config = LLM_Config(
+                context=self.context,
+                status=self.config.get("LLM_model")
+            )
+            self.file_parser = FileParser(self.llm_config)
             logger.info("文件解析器初始化完成。")
 
             # Vector DB

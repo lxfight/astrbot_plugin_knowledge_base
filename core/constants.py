@@ -32,6 +32,7 @@ ALLOWED_FILE_EXTENSIONS = [
 ]
 TEXT_EXTENSIONS = {".txt", ".md"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".acc", ".aiff"}
 MARKITDOWN_EXTENSIONS = {
     ".pdf",
     ".docx",

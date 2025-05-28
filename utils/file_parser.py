@@ -2,6 +2,7 @@ from typing import Optional
 from astrbot.api import logger
 from astrbot.api.star import Context
 import os
+import base64
 import aiofiles
 from aiofiles.os import stat as aio_stat
 import chardet
@@ -12,108 +13,42 @@ from ..core.constants import (
     TEXT_EXTENSIONS,
     IMAGE_EXTENSIONS,
     MARKITDOWN_EXTENSIONS,
+    AUDIO_EXTENSIONS,
 )
 from markitdown import MarkItDown
 from openai import AsyncOpenAI, OpenAI
 
 
-class FileParser:
-    def __init__(self, context: Context):
+class LLM_Config:
+    """LLM配置类"""
+    def __init__(self, context: Context, status: bool):
         self.context = context
+        self.status = status
+        if self.status:
+            # 获取当前使用的 provider
+            provider_config = self.context.get_using_provider()
+            if provider_config is None:
+                logger.error("未在AstrBot配置LLM服务商，请检查配置")
+                raise ValueError("未在AstrBot配置LLM服务商，请检查配置")
+            self.api_key = provider_config.get_current_key()
+            self.api_url = provider_config.provider_config.get("api_base")
+            self.model_name = provider_config.get_model()
 
-        # 获取当前使用的 provider
-        provider_config = self.context.get_using_provider()
-        if provider_config is None:
-            logger.error("未在AstrBot配置LLM服务商，请检查配置")
-            raise ValueError("未在AstrBot配置LLM服务商，请检查配置")
-        self.api_key = (
-            provider_config.get_current_key()
-        )  # 使用get_current_key()获取当前key
-        self.api_url = provider_config.provider_config.get(
-            "api_base"
-        )  # 从provider_config获取api_base
-        self.model_name = provider_config.get_model()  # 使用get_model()获取当前model
-
-        # 初始化 MarkItDown
-        self.async_client = AsyncOpenAI(api_key=self.api_key, base_url=self.api_url)
-        self.sync_client = OpenAI(api_key=self.api_key, base_url=self.api_url)
-
-        if self.api_key is None or self.api_url is None or self.model_name is None:
-            self.md_converter = MarkItDown(enable_plugins=False)
-            self.image_converter = MarkItDown(enable_plugins=False)
-            logger.warning(
-                "未配置 LLM API 密钥、地址和模型名称，图片和复杂文档解析可能失败"
-            )
-        else:
+            # 初始化 LLM 客户端
+            self.async_client = AsyncOpenAI(api_key=self.api_key, base_url=self.api_url)
+            self.sync_client = OpenAI(api_key=self.api_key, base_url=self.api_url)
+            # 初始化 MarkItDown
             self.md_converter = MarkItDown(
                 enable_plugins=True,
                 llm_client=self.async_client,
                 llm_model=self.model_name,
             )
-            self.image_converter = MarkItDown(
-                enable_plugins=True,
-                llm_client=self.sync_client,
-                llm_model=self.model_name,
-            )
             logger.info("配置LLM成功")
+        else:
+            self.md_converter = MarkItDown(enable_plugins=False)
+            logger.warning("未启用LLM大模型解析文件，图片和复杂文档解析可能失败")
 
-    async def parse_file_content(self, file_path: str) -> Optional[str]:
-        """
-        异步读取并解析文件内容。
-
-        Args:
-            file_path: 文件路径。
-
-        Returns:
-            文件文本内容，如果解析失败则返回 None。
-        """
-        try:
-            _, extension = os.path.splitext(file_path)
-            extension = extension.lower()
-
-            # 处理普通文本文件
-            if extension in TEXT_EXTENSIONS:
-                content = await self._detect_and_read_file(file_path=file_path)
-                if content is None:
-                    logger.error(f"无法读取文件 {file_path}，请检查文件编码")
-                    return None
-                return content
-
-            # 使用 MarkItDown 处理其他支持的文件格式
-            elif extension in IMAGE_EXTENSIONS:
-                try:
-                    loop = asyncio.get_running_loop()
-                    result = await loop.run_in_executor(
-                        None, lambda: self.image_converter.convert(file_path)
-                    )
-                    content = result.text_content
-                    return content
-                except Exception as e:
-                    logger.error(f"图片转换失败 {file_path}: {e}")
-                    return None
-            elif extension in MARKITDOWN_EXTENSIONS:
-                try:
-                    loop = asyncio.get_running_loop()
-                    result = await loop.run_in_executor(
-                        None, lambda: self.md_converter.convert(file_path)
-                    )
-                    content = result.text_content
-                    return content
-                except Exception as e:
-                    logger.error(f"MarkItDown 转换文件失败 {file_path}: {e}")
-                    return None
-
-            else:
-                logger.warning(f"不支持的文件类型: {extension}，文件路径: {file_path}")
-                return None
-
-        except FileNotFoundError:
-            logger.error(f"文件未找到: {file_path}")
-            return None
-        except Exception as e:
-            logger.error(f"解析文件 {file_path} 时发生错误: {e}")
-            return None
-
+    """文本文件解析类"""
     async def _detect_and_read_file(self, file_path: str) -> str:
         """
         检测文件编码并读取文件内容
@@ -208,5 +143,216 @@ class FileParser:
                     f"最终尝试使用 UTF-8 编码读取文件 {file_path}（替换模式）也失败: {e_final}"
                 )
                 raise ValueError(f"无法读取或解码文件: {file_path}")
-
         return content
+        
+    """图片解析"""
+    def image_converter(self, base64_image: str) -> str:
+        if not self.status:
+            logger.warning("未启用LLM大模型解析文件，无法解析图片")
+            return None
+        try:   
+            response = self.sync_client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "你是图片解析专家，请用当前图片语言提取图片中的文字。",
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                },
+                            },
+                        ],
+                    }
+                ],
+            )
+            return response.choices[0].message.content
+        
+        except Exception as e:
+            logger.error(f"图片解析失败 {e}")
+            return None
+        
+    """音频解析"""
+    def audio_converter(self, base64_audio: str, audio_format: str) -> str:
+        if not self.status:
+            logger.warning("未启用LLM大模型解析文件，无法解析音频")
+            return None
+        try:
+            response = self.sync_client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "你是音频解析专家，请用当前音频语言提取音频中的文字(中文则使用简体)。",
+                            },
+                            {
+                                "type": "input_audio",
+                                "input_audio": {
+                                    "data": base64_audio,
+                                    "format": audio_format.lstrip('.')
+                                },
+                            },
+                        ],
+                    }
+                ],
+            )
+            return response.choices[0].message.content
+        
+        except Exception as e:
+            logger.error(f"音频解析失败 {e}")
+            return None
+        
+class TextFileParser:
+
+    def __init__(self, llm_config: LLM_Config):
+        self._detect_and_read_file = llm_config._detect_and_read_file
+    async def parse(self, file_path: str) -> Optional[str]:
+        """
+        异步读取并解析文件内容。
+
+        Args:
+            file_path: 文件路径。
+
+        Returns:
+            文件文本内容，如果解析失败则返回 None。
+        """
+        try:
+            content = await self._detect_and_read_file(file_path=file_path)
+            if content is None:
+                logger.error(f"无法读取文件 {file_path}，请检查文件编码")
+                return None
+            return content
+        except Exception as e:
+            logger.error(f"解析文本文件 {file_path} 时发生错误: {e}")
+            return None
+        
+class MarkdownFileParser:
+    """Markdown和复杂文本文件解析器"""
+    def __init__(self, llm_config: LLM_Config):
+        self.md_converter = llm_config.md_converter
+
+    async def parse(self, file_path: str) -> Optional[str]:
+        """解析Markdown文件"""
+        try:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, lambda: self.md_converter.convert(file_path)
+            )
+            return result.text_content
+        except Exception as e:
+            logger.error(f"MarkItDown 转换文件失败 {file_path}: {e}")
+            return None
+
+class ImageFileParser:
+    """图片文件解析器"""
+    def __init__(self, llm_config: LLM_Config):
+        self.image_converter = llm_config.image_converter
+
+    def _encode_image(self, file_path: str) -> str:
+        """
+        将图片转换为base64编码
+        """
+        try:
+            with open(file_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+        except Exception as e:
+            logger.error(f"图片编码失败 {file_path}: {e}")
+            raise
+
+
+    async def parse(self, file_path: str) -> Optional[str]:
+        """解析图片文件"""
+        try:
+            loop = asyncio.get_running_loop()
+            base64_image = self._encode_image(file_path)
+            result = await loop.run_in_executor(
+                None, lambda: self.image_converter(base64_image)
+            )
+            return result
+        
+        except Exception as e:
+            logger.error(f"图片转换失败 {file_path}: {e}")
+            return None
+
+class AudioFileParser:
+    """音频文件解析器"""
+    def __init__(self, llm_config: LLM_Config):
+        self.audio_converter = llm_config.audio_converter
+
+    def _encode_audio(self, file_path: str) -> str:
+        """
+        将音频转换为base64编码
+        """
+        try:
+            with open(file_path, "rb") as audio_file:
+                  return base64.b64encode(audio_file.read()).decode('utf-8')
+        except Exception as e:
+            logger.error(f"音频编码失败 {file_path}: {e}")
+            raise
+
+    async def parse(self, file_path: str) -> Optional[str]:
+        """解析音频文件"""
+        try:
+            loop = asyncio.get_running_loop()
+            base64_audio = self._encode_audio(file_path)
+            audio_format = os.path.splitext(file_path)[1]
+            result = await loop.run_in_executor(
+                None, lambda: self.audio_converter(base64_audio, audio_format)
+            )
+            logger.info(f"音频转换结果：{result}")
+            return result
+        
+        except Exception as e:
+            logger.error(f"音频转换失败 {file_path}: {e}")
+            return None
+
+
+class FileParser:
+    """文件解析器主类"""
+    def __init__(self, llm_config: LLM_Config):
+        self.text_parser = TextFileParser(llm_config)
+        self.markdown_parser = MarkdownFileParser(llm_config)
+        self.image_parser = ImageFileParser(llm_config)
+        self.audio_parser = AudioFileParser(llm_config)
+
+    async def parse_file_content(self, file_path: str) -> Optional[str]:
+        """
+        异步读取并解析文件内容。
+
+        Args:
+            file_path: 文件路径。
+
+        Returns:
+            文件文本内容，如果解析失败则返回 None。
+        """
+        try:
+            _, extension = os.path.splitext(file_path)
+            extension = extension.lower()
+
+            # 根据文件类型选择对应的解析器
+            if extension in TEXT_EXTENSIONS:
+                return await self.text_parser.parse(file_path)
+            elif extension in IMAGE_EXTENSIONS:
+                return await self.image_parser.parse(file_path)
+            elif extension in MARKITDOWN_EXTENSIONS:
+                return await self.markdown_parser.parse(file_path)
+            elif extension in AUDIO_EXTENSIONS:
+                return await self.audio_parser.parse(file_path)
+            else:
+                logger.warning(f"不支持的文件类型: {extension}，文件路径: {file_path}")
+                return None
+
+        except FileNotFoundError:
+            logger.error(f"文件未找到: {file_path}")
+            return None
+        except Exception as e:
+            logger.error(f"解析文件 {file_path} 时发生错误: {e}")
+            return None
