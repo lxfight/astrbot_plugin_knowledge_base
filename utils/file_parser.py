@@ -146,7 +146,7 @@ class LLM_Config:
         return content
         
     """图片解析"""
-    def image_converter(self, base64_image: str) -> str:
+    def image_converter(self, base64_image: str, image_format: str) -> str:
         if not self.status:
             logger.warning("未启用LLM大模型解析文件，无法解析图片")
             return None
@@ -159,12 +159,12 @@ class LLM_Config:
                         "content": [
                             {
                                 "type": "text",
-                                "text": "你是图片解析专家，请用当前图片语言提取图片中的文字。",
+                                "text": "你是图片解析专家，请用当前图片语言提取图片中的文字，只返回纯净的段落文本，不要返回JSON或坐标信息。",
                             },
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                    "url": f"data:image/{image_format.lstrip('.')};base64,{base64_image}"
                                 },
                             },
                         ],
@@ -191,7 +191,7 @@ class LLM_Config:
                         "content": [
                             {
                                 "type": "text",
-                                "text": "你是音频解析专家，请用当前音频语言提取音频中的文字(中文则使用简体)。",
+                                "text": "你是音频解析专家，请用当前音频语言提取音频中的文字(中文则使用简体)，只返回纯净的段落文本，不要返回JSON或坐标信息。",
                             },
                             {
                                 "type": "input_audio",
@@ -273,9 +273,11 @@ class ImageFileParser:
         try:
             loop = asyncio.get_running_loop()
             base64_image = self._encode_image(file_path)
+            image_format = os.path.splitext(file_path)[1]
             result = await loop.run_in_executor(
-                None, lambda: self.image_converter(base64_image)
+                None, lambda: self.image_converter(base64_image, image_format)
             )
+            logger.info(f"图片转换结果：{result}")
             return result
         
         except Exception as e:
