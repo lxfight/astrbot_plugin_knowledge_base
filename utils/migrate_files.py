@@ -1,7 +1,6 @@
 import os
 import pickle
 from astrbot.api import logger
-from astrbot.core.config.default import VERSION
 
 
 def migrate_docs_to_db(data_path: str):
