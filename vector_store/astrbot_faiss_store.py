@@ -15,6 +15,16 @@ from astrbot.core.provider.provider import EmbeddingProvider
 from .faiss_store import FaissStore as OldFaissStore
 
 
+def _check_pickle_file(file_path: str) -> bool:
+    """检查文件是否为 Pickle 格式"""
+    try:
+        with open(file_path, "rb") as f:
+            magic = f.read(4)
+            return magic == b"\x80\x04"
+    except Exception:
+        return False
+
+
 class AstrBotEmbeddingProviderWrapper(EmbeddingProvider):
     """AstrBot Embedding Provider 包装类"""
 
@@ -29,23 +39,14 @@ class AstrBotEmbeddingProviderWrapper(EmbeddingProvider):
         return self.dimension
 
 
-def _check_pickle_file(file_path: str) -> bool:
-    """检查文件是否为 Pickle 格式"""
-    try:
-        with open(file_path, "rb") as f:
-            magic = f.read(4)
-            return magic == b"\x80\x04"
-    except Exception:
-        return False
-
-
 class FaissStore(VectorDBBase):
     """对 AstrBot FaissVecDB 的包装类，以适应 KB 的接口规范"""
 
     def __init__(self, embedding_util, dimension: int, data_path: str):
         super().__init__(embedding_util, dimension, data_path)
         self.vecdbs: Dict[str, FaissVecDB] = {}
-        self.old_faiss_store = None
+        self._old_faiss_store: OldFaissStore = None
+        self._old_collections = {}
         self.embedding_util = AstrBotEmbeddingProviderWrapper(
             embedding_util=embedding_util, dimension=dimension
         )
@@ -61,8 +62,13 @@ class FaissStore(VectorDBBase):
         storage_path = os.path.join(self.data_path, f"{collection_name}.db")
 
         if _check_pickle_file(storage_path):
+            # old Faiss store format
+            self._old_collections[collection_name] = collection_name
             if not self.old_faiss_store:
-                self.old_faiss_store = OldFaissStore(None, self.dimension, self.data_path)
+                self.old_faiss_store = OldFaissStore(
+                    self.embedding_util, self.dimension, self.data_path
+                )
+                await self.old_faiss_store.initialize()
             return
 
         try:
@@ -98,11 +104,16 @@ class FaissStore(VectorDBBase):
         logger.info(f"Faiss 集合 '{collection_name}' 创建成功。")
 
     async def collection_exists(self, collection_name: str) -> bool:
-        return collection_name in self.vecdbs
+        return (
+            collection_name in self.vecdbs or collection_name in self._old_collections
+        )
 
     async def add_documents(
         self, collection_name: str, documents: List[Document]
     ) -> List[str]:
+        if collection_name in self._old_collections:
+            return await self._old_faiss_store.add_documents(collection_name, documents)
+
         if not await self.collection_exists(collection_name):
             logger.warning(f"Faiss 集合 '{collection_name}' 不存在。将尝试自动创建。")
             await self.create_collection(collection_name)
@@ -201,6 +212,11 @@ class FaissStore(VectorDBBase):
             logger.warning(f"Faiss 集合 '{collection_name}' 不存在。")
             return []
 
+        if collection_name in self._old_collections:
+            return await self._old_faiss_store.search(
+                collection_name, query_text, top_k
+            )
+
         results = await self.vecdbs[collection_name].retrieve(
             query=query_text,
             k=top_k,
@@ -225,6 +241,9 @@ class FaissStore(VectorDBBase):
             logger.info(f"Faiss 集合 '{collection_name}' 不存在，无需删除。")
             return False
 
+        if collection_name in self._old_collections:
+            return await self._old_faiss_store.delete_collection(collection_name)
+
         def _delete_sync():
             self.vecdbs.pop(collection_name, None)  # 从内存中删除集合
 
@@ -245,11 +264,13 @@ class FaissStore(VectorDBBase):
         return await asyncio.to_thread(_delete_sync)
 
     async def list_collections(self) -> List[str]:
-        return list(self.vecdbs.keys())
+        return list(self.vecdbs.keys()) + list(self._old_collections.keys())
 
     async def count_documents(self, collection_name: str) -> int:
         if not await self.collection_exists(collection_name):
             return 0
+        if collection_name in self._old_collections:
+            return await self._old_faiss_store.count_documents(collection_name)
         cnt = await self.vecdbs[collection_name].count_documents()
         return cnt
 
@@ -259,3 +280,6 @@ class FaissStore(VectorDBBase):
             logger.info(f"Faiss 集合 '{collection_name}' 已关闭。")
         self.vecdbs.clear()
         logger.info("所有 Faiss 集合已关闭。")
+
+        if self.old_faiss_store:
+            await self.old_faiss_store.close()

@@ -16,6 +16,16 @@ import asyncio
 # Faiss 是同步库，通过 asyncio.to_thread 包装其操作以适应异步环境
 
 
+def _check_pickle_file(file_path: str) -> bool:
+    """检查文件是否为 Pickle 格式"""
+    try:
+        with open(file_path, "rb") as f:
+            magic = f.read(4)
+            return magic == b"\x80\x04"
+    except Exception:
+        return False
+
+
 class FaissStore(VectorDBBase):
     def __init__(self, embedding_util, dimension: int, data_path: str):
         super().__init__(embedding_util, dimension, data_path)
@@ -33,6 +43,10 @@ class FaissStore(VectorDBBase):
         storage_path = os.path.join(
             self.data_path, f"{collection_name}.db"
         )  # 后缀由 .docs 改为 .db
+
+        if not _check_pickle_file(storage_path):
+            logger.info(f"{collection_name} 对应的存储文件 {storage_path} 不是有效的 Pickle 文件，将跳过加载。")
+            return
 
         if os.path.exists(index_path) and os.path.exists(storage_path):
             try:
