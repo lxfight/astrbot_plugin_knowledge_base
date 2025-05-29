@@ -10,6 +10,7 @@ from astrbot.core.utils.session_waiter import (
     session_waiter,
     SessionController,
 )
+from astrbot.core.config.default import VERSION
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import StarTools
 
@@ -20,7 +21,11 @@ from .utils.embedding import EmbeddingUtil
 from .utils.text_splitter import TextSplitterUtil
 from .utils.file_parser import FileParser
 from .vector_store.base import VectorDBBase
-from .vector_store.faiss_store import FaissStore
+if VERSION < "3.5.12":
+    logger.info("建议升级至 AstrBot v3.5.12 或更高版本。")
+    from .vector_store.faiss_store import FaissStore
+else:
+    from .vector_store.astrbot_faiss_store import FaissStore
 from .vector_store.milvus_lite_store import MilvusLiteStore
 from .vector_store.milvus_store import MilvusStore
 from .web_api import KnowledgeBaseWebAPI
