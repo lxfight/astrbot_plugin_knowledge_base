@@ -1,4 +1,10 @@
 numpy>=2.2.0
 faiss-cpu>=1.10.0
 pymilvus>=2.5.0
-markitdown>=0.1.0
+markitdown[all]>=0.1.0
+#markitdown-plugin 依赖
+pdf-to-markdown[async_sync_env]
+pymupdf
+pymupdf4llm
+pillow
+tqdm

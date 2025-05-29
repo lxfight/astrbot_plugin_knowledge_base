@@ -17,7 +17,7 @@ from pymilvus import (
     DataType,
     FieldSchema,
     CollectionSchema,
-    # Index,  # 用于类型提示
+    Index,
 )
 from pymilvus.exceptions import ConnectionConfigException, MilvusException
 import asyncio
@@ -248,19 +248,19 @@ class MilvusStore(VectorDBBase):
                 logger.warning(
                     f"集合 '{collection_name}' 的 embedding 字段上没有索引。将尝试创建 {self.index_type}。"
                 )
-                # index_obj = Index(
-                #     collection,
-                #     field_name="embedding",
-                #     index_params={
-                #         "index_type": self.index_type,
-                #         "metric_type": self.metric_type,
-                #         "params": self.index_params_config,
-                #     },
-                # )
-                # collection.create_index 已经被废弃，应该使用 Index 对象来管理
-                # 如果 Index 对象创建时没有自动创建，则需要调用一个方法，但通常是自动的
-                # 若是 pymilvus < 2.2.0:
-                # collection.create_index(field_name="embedding", index_params=index_obj.params)
+                index_obj = Index(
+                    collection,
+                    field_name="embedding",
+                    index_params={
+                        "index_type": self.index_type,
+                        "metric_type": self.metric_type,
+                        "params": self.index_params_config,
+                    },
+                    using=self.alias,
+                )
+                collection.create_index(
+                    field_name="embedding", index_params=index_obj.params
+                )
                 logger.info(
                     f"为集合 '{collection_name}' 的 'embedding' 字段创建索引 {self.index_type} 成功 (通过 Index 对象)。"
                 )
@@ -550,7 +550,7 @@ class MilvusStore(VectorDBBase):
             current_retry_count = processing_batch.retry_count
 
             log_prefix = f"[批次 ({len(current_docs_in_batch)} docs), 重试 {current_retry_count}/{MAX_RETRIES}]"
-            logger.info(f"{log_prefix} 正在处理...")
+            logger.debug(f"{log_prefix} 正在处理...")
 
             try:
                 current_batch_texts_to_embed = []
@@ -569,7 +569,7 @@ class MilvusStore(VectorDBBase):
                             current_batch_texts_to_embed
                         )
                     )
-                    logger.info(
+                    logger.debug(
                         f"{log_prefix} 成功为 {len(batch_embeddings_generated)} 个文本生成了嵌入。"
                     )
 
@@ -629,17 +629,11 @@ class MilvusStore(VectorDBBase):
                     collection.insert, data_to_insert_for_batch
                 )
 
-                # 对于标准 Milvus，flush 很重要以确保数据对搜索可见
-                if self.kwargs.get("auto_flush_after_insert", True):
-                    logger.info(f"{log_prefix} 正在刷新集合 '{collection_name}'...")
-                    await asyncio.to_thread(collection.flush)  # flush 也是同步操作
-                    logger.info(f"{log_prefix} 集合 '{collection_name}' 刷新完成。")
-
                 # Milvus 返回的 primary_keys 是 int，转为 str
                 batch_added_ids = [str(pk) for pk in insert_result.primary_keys]
                 all_doc_ids.extend(batch_added_ids)
-                logger.info(
-                    f"{log_prefix} 成功向远程 Milvus 集合 '{collection_name}' (alias: {self.alias}) 添加了 {len(batch_added_ids)} 个文档。"
+                logger.debug(
+                    f"成功向远程 Milvus 集合 '{collection_name}' (alias: {self.alias}) 添加了 {len(batch_added_ids)} 个文档。"
                 )
 
                 processed_batches_count += 1
@@ -688,6 +682,11 @@ class MilvusStore(VectorDBBase):
                 del current_docs_in_batch  # 清理当前批次文档的引用
                 del processing_batch  # 清理批次对象的引用
 
+        # 对于标准 Milvus，flush 很重要以确保数据对搜索可见
+        if self.kwargs.get("auto_flush_after_insert", True):
+            logger.info(f"{log_prefix} 正在刷新集合 '{collection_name}'...")
+            await asyncio.to_thread(collection.flush)  # flush 也是同步操作
+            logger.info(f"{log_prefix} 集合 '{collection_name}' 刷新完成。")
         logger.info(
             f"向远程 Milvus 集合 '{collection_name}' (alias: {self.alias}) 完成添加操作。"
         )

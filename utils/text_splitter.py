@@ -137,14 +137,13 @@ class RecursiveCharacterTextSplitter:
 
 class TextSplitterUtil:
     def __init__(
-        self, chunk_size: int, chunk_overlap: int, model_name: str = "gpt-3.5-turbo"
+        self, chunk_size: int, chunk_overlap: int
     ):
         """
         初始化文本分割器。
         Args:
             chunk_size: 每个块的目标大小 (字符数或 token 数，取决于分割器实现)
             chunk_overlap: 块之间的重叠大小
-            model_name: 用于 tiktoken 计算 token 数的模型名 (如果使用基于 token 的分割)
         """
         # 使用 Langchain 的 RecursiveCharacterTextSplitter，它按字符分割并尝试保持段落完整性
         self.splitter = RecursiveCharacterTextSplitter(

@@ -69,7 +69,9 @@ class EmbeddingUtil:
             logger.error(f"获取 Embedding 时发生未知错误: {e}", exc_info=True)
             return None
 
-    async def get_embeddings_async(self, texts: List[str]) -> List[Optional[List[float]]]:
+    async def get_embeddings_async(
+        self, texts: List[str]
+    ) -> List[Optional[List[float]]]:
         """获取多个文本的 embedding (使用 OpenAI 批量接口)，每 10 条文本分批请求"""
         if not texts:
             logger.info("输入文本列表为空，返回空 embedding 列表。")
@@ -94,7 +96,7 @@ class EmbeddingUtil:
 
         # 设置每批次大小为 10
         batch_size = 10
-        actual_texts_to_embed = [item[1] for item in valid_texts_with_indices]
+        # actual_texts_to_embed = [item[1] for item in valid_texts_with_indices]
 
         # 分批处理文本
         for batch_start in range(0, len(valid_texts_with_indices), batch_size):
@@ -103,7 +105,6 @@ class EmbeddingUtil:
             batch_texts = [text for _, text in batch_indices_texts]
 
             try:
-                logger.info(f"处理批次 {batch_start // batch_size + 1}，文本数量: {len(batch_texts)}")
                 response = await self.client.embeddings.create(
                     input=batch_texts, model=self.model_name
                 )
@@ -149,7 +150,7 @@ class EmbeddingUtil:
             except Exception as e:
                 logger.error(
                     f"批次 {batch_start // batch_size + 1} 获取 Embeddings 时发生未知错误: {e}",
-                    exc_info=True
+                    exc_info=True,
                 )
                 continue
 
