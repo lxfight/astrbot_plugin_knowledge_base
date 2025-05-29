@@ -7,6 +7,7 @@ from .utils.text_splitter import TextSplitterUtil
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from .utils.file_parser import FileParser
 from astrbot import logger
+from astrbot.core.config.default import VERSION
 
 
 class KnowledgeBaseWebAPI:
@@ -19,6 +20,10 @@ class KnowledgeBaseWebAPI:
         self.vec_db = vec_db
         self.text_splitter = text_splitter
         self.astrbot_context = astrbot_context
+
+        if VERSION < "3.5.12":
+            raise RuntimeError("AstrBot 版本过低，无法支持 FAISS 存储，请升级 AstrBot 至 3.5.12 或更高版本。")
+
         self.astrbot_context.register_web_api(
             "/alkaid/kb/create_collection",
             self.create_collection,

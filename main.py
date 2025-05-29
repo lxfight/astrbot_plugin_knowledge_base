@@ -71,8 +71,8 @@ class KnowledgeBasePlugin(Star):
             self.web_api = KnowledgeBaseWebAPI(
                 self.vector_db, self.text_splitter, self.context
             )
-        except Exception:
-            logger.warning("知识库 WebAPI 初始化失败，可能导致无法在 WebUI 操作知识库。", exc_info=True)
+        except Exception as e:
+            logger.warning(f"知识库 WebAPI 初始化失败，可能导致无法在 WebUI 操作知识库。原因：{e}", exc_info=True)
 
 
     async def _initialize_components(self):

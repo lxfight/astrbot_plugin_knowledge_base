@@ -12,6 +12,7 @@ from .base import (
 from astrbot.api import logger
 from astrbot.core.db.vec_db.faiss_impl import FaissVecDB
 from astrbot.core.provider.provider import EmbeddingProvider
+from .faiss_store import FaissStore as OldFaissStore
 
 
 class AstrBotEmbeddingProviderWrapper(EmbeddingProvider):
@@ -28,12 +29,23 @@ class AstrBotEmbeddingProviderWrapper(EmbeddingProvider):
         return self.dimension
 
 
+def _check_pickle_file(file_path: str) -> bool:
+    """检查文件是否为 Pickle 格式"""
+    try:
+        with open(file_path, "rb") as f:
+            magic = f.read(4)
+            return magic == b"\x80\x04"
+    except Exception:
+        return False
+
+
 class FaissStore(VectorDBBase):
     """对 AstrBot FaissVecDB 的包装类，以适应 KB 的接口规范"""
 
     def __init__(self, embedding_util, dimension: int, data_path: str):
         super().__init__(embedding_util, dimension, data_path)
         self.vecdbs: Dict[str, FaissVecDB] = {}
+        self.old_faiss_store = None
         self.embedding_util = AstrBotEmbeddingProviderWrapper(
             embedding_util=embedding_util, dimension=dimension
         )
@@ -47,6 +59,12 @@ class FaissStore(VectorDBBase):
     async def _load_collection(self, collection_name: str):
         index_path = os.path.join(self.data_path, f"{collection_name}.index")
         storage_path = os.path.join(self.data_path, f"{collection_name}.db")
+
+        if _check_pickle_file(storage_path):
+            if not self.old_faiss_store:
+                self.old_faiss_store = OldFaissStore(None, self.dimension, self.data_path)
+            return
+
         try:
             self.vecdbs[collection_name] = FaissVecDB(
                 doc_store_path=storage_path,
@@ -168,7 +186,7 @@ class FaissStore(VectorDBBase):
                 del processing_batch  # 清理批次对象的引用
 
         # 等待所有任务完成（尽管上面的循环在单消费者模式下已经做到了类似的事情）
-        await processing_queue.join() # 如果有多个消费者协程，这个是必要的
+        await processing_queue.join()  # 如果有多个消费者协程，这个是必要的
 
         logger.info(
             f"向 Faiss 集合 '{collection_name}' 完成添加操作。总共处理了 {len(documents)} 个原始文档，成功添加 {len(all_doc_ids)} 个文档。"
