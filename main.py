@@ -72,13 +72,6 @@ class KnowledgeBasePlugin(Star):
             self.persistent_data_root_path, "user_collection_prefs.json"
         )
 
-        try:
-            self.web_api = KnowledgeBaseWebAPI(
-                self.vector_db, self.text_splitter, self.context
-            )
-        except Exception as e:
-            logger.warning(f"知识库 WebAPI 初始化失败，可能导致无法在 WebUI 操作知识库。原因：{e}", exc_info=True)
-
 
     async def _initialize_components(self):
         try:
@@ -160,9 +153,13 @@ class KnowledgeBasePlugin(Star):
                 await self.vector_db.initialize()
                 logger.info(f"向量数据库 '{db_type}' 初始化完成。")
 
-            # 更新 Web API 的向量数据库引用
-            self.web_api.vec_db = self.vector_db
-            self.web_api.text_splitter = self.text_splitter
+            # Web API
+            try:
+                self.web_api = KnowledgeBaseWebAPI(
+                    self.vector_db, self.text_splitter, self.context
+                )
+            except Exception as e:
+                logger.warning(f"知识库 WebAPI 初始化失败，可能导致无法在 WebUI 操作知识库。原因：{e}", exc_info=True)
             self.user_prefs_handler = UserPrefsHandler(
                 self.user_prefs_path, self.vector_db, self.config
             )
