@@ -8,6 +8,7 @@ from .utils.text_splitter import TextSplitterUtil
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from .utils.file_parser import FileParser, LLM_Config
 from astrbot import logger
+from astrbot.api import logger, AstrBotConfig
 from astrbot.core.config.default import VERSION
 from .core.user_prefs_handler import UserPrefsHandler
 
@@ -20,11 +21,13 @@ class KnowledgeBaseWebAPI:
         astrbot_context: Context,
         llm_config: LLM_Config,
         user_prefs_handler: UserPrefsHandler = None,
+        plugin_config: AstrBotConfig = None,
     ):
         self.vec_db = vec_db
         self.text_splitter = text_splitter
         self.astrbot_context = astrbot_context
         self.user_prefs_handler = user_prefs_handler
+        self.plugin_config = plugin_config
 
         if VERSION < "3.5.13":
             raise RuntimeError("AstrBot 版本过低，无法支持 FAISS 存储，请升级 AstrBot 至 3.5.13 或更高版本。")
@@ -75,6 +78,11 @@ class KnowledgeBaseWebAPI:
             return Response().error("缺少集合名称").__dict__
         if await self.vec_db.collection_exists(collection_name):
             return Response().error("集合已存在").__dict__
+        # embedding_model_name = self.plugin_config.get("embedding_model_name", "")
+        # embedding_api_url = self.plugin_config.get("embedding_api_url", "")
+        # embedding_api_key = self.plugin_config.get("embedding_api_key", "")
+        if not embedding_model_name or not embedding_api_url or not embedding_api_key:
+            return Response().error("缺少 Embedding 模型配置").__dict__
         try:
             await self.vec_db.create_collection(collection_name)
             # 添加集合元数据
@@ -83,6 +91,12 @@ class KnowledgeBaseWebAPI:
                 "description": description,
                 "created_at": int(time.time()),
                 "origin": "astrbot-webui",
+                # "embedding_provider": {
+                #     "type": "openai",
+                #     "model": embedding_model_name,
+                #     "api_base": embedding_api_url,
+                #     "api_key": embedding_api_key,
+                # }
             }
             collection_metadata = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {})
             collection_metadata[collection_name] = metadata

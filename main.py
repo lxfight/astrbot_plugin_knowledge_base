@@ -168,7 +168,8 @@ class KnowledgeBasePlugin(Star):
                     text_splitter=self.text_splitter,
                     astrbot_context=self.context,
                     llm_config=self.llm_config,
-                    user_prefs_handler=self.user_prefs_handler
+                    user_prefs_handler=self.user_prefs_handler,
+                    plugin_config=self.config,
                 )
             except Exception as e:
                 logger.warning(f"知识库 WebAPI 初始化失败，可能导致无法在 WebUI 操作知识库。原因：{e}", exc_info=True)
