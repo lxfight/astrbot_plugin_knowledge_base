@@ -7,11 +7,11 @@ from .base import (
     Document,
     ProcessingBatch,
     DEFAULT_BATCH_SIZE,
-    MAX_RETRIES,
 )
 from astrbot.api import logger
 from astrbot.core.db.vec_db.faiss_impl import FaissVecDB
 from astrbot.core.provider.provider import EmbeddingProvider
+from ..utils.embedding import EmbeddingSolutionHelper
 from .faiss_store import FaissStore as OldFaissStore
 
 
@@ -28,9 +28,12 @@ def _check_pickle_file(file_path: str) -> bool:
 class AstrBotEmbeddingProviderWrapper(EmbeddingProvider):
     """AstrBot Embedding Provider 包装类"""
 
-    def __init__(self, embedding_util, dimension: int, collection_name: str):
+    def __init__(
+        self,
+        embedding_util: EmbeddingSolutionHelper,
+        collection_name: str,
+    ):
         self.embedding_util = embedding_util
-        self.dimension = dimension
         self.collection_name = collection_name
 
     async def get_embedding(self, text: str) -> List[float]:
@@ -40,10 +43,12 @@ class AstrBotEmbeddingProviderWrapper(EmbeddingProvider):
                 "获取向量失败，返回的向量为空或无效。请检查输入文本和配置。"
             )
         return vec
-    
+
     async def get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """批量获取文本的嵌入"""
-        vecs = await self.embedding_util.get_embeddings_async(texts, self.collection_name)
+        vecs = await self.embedding_util.get_embeddings_async(
+            texts, self.collection_name
+        )
         if not vecs:
             raise ValueError(
                 "获取向量失败，返回的向量为空或无效。请检查输入文本和配置。"
@@ -51,15 +56,16 @@ class AstrBotEmbeddingProviderWrapper(EmbeddingProvider):
         return vecs
 
     def get_dim(self) -> int:
-        # NOTE: 不应该调用这个方法。
-        return self.dimension
+        return self.embedding_util.get_dimensions(self.collection_name)
 
 
 class FaissStore(VectorDBBase):
     """对 AstrBot FaissVecDB 的包装类，以适应 KB 的接口规范"""
 
-    def __init__(self, embedding_util, dimension: int, data_path: str):
-        super().__init__(embedding_util, dimension, data_path)
+    def __init__(
+        self, embedding_util: EmbeddingSolutionHelper, data_path: str
+    ):
+        super().__init__(embedding_util, data_path)
         self.vecdbs: Dict[str, FaissVecDB] = {}
         self._old_faiss_store: OldFaissStore = None
         self._old_collections = {}
@@ -80,7 +86,7 @@ class FaissStore(VectorDBBase):
             self._old_collections[collection_name] = collection_name
             if not self.old_faiss_store:
                 self.old_faiss_store = OldFaissStore(
-                    self.embedding_util, self.dimension, self.data_path
+                    self.embedding_util, self.data_path
                 )
                 await self.old_faiss_store.initialize()
             return
@@ -88,13 +94,12 @@ class FaissStore(VectorDBBase):
         try:
             self.embedding_utils[collection_name] = AstrBotEmbeddingProviderWrapper(
                 embedding_util=self.embedding_util,
-                dimension=self.dimension,
                 collection_name=collection_name,
             )
             self.vecdbs[collection_name] = FaissVecDB(
                 doc_store_path=storage_path,
                 index_store_path=index_path,
-                embedding_provider= self.embedding_utils[collection_name],
+                embedding_provider=self.embedding_utils[collection_name],
             )
             await self.vecdbs[collection_name].initialize()
         except Exception as e:
@@ -116,13 +121,12 @@ class FaissStore(VectorDBBase):
         storage_path = os.path.join(self.data_path, f"{collection_name}.db")
         self.embedding_utils[collection_name] = AstrBotEmbeddingProviderWrapper(
             embedding_util=self.embedding_util,
-            dimension=self.dimension,
             collection_name=collection_name,
         )
         self.vecdbs[collection_name] = FaissVecDB(
             doc_store_path=storage_path,
             index_store_path=index_path,
-            embedding_provider= self.embedding_utils[collection_name],
+            embedding_provider=self.embedding_utils[collection_name],
         )
         await self.vecdbs[collection_name].initialize()
         await self.vecdbs[collection_name].embedding_storage.save_index()
@@ -132,8 +136,10 @@ class FaissStore(VectorDBBase):
         return (
             collection_name in self.vecdbs or collection_name in self._old_collections
         )
-    
-    async def _batch_process_task(self, batch: ProcessingBatch, collection_name: str) -> List[str]:
+
+    async def _batch_process_task(
+        self, batch: ProcessingBatch, collection_name: str
+    ) -> List[str]:
         """处理单个批次的任务"""
         all_doc_ids = []
         retry_cnt = 3
@@ -148,16 +154,16 @@ class FaissStore(VectorDBBase):
                     break
                 except Exception as e:
                     import traceback
+
                     traceback.print_exc()
                     logger.error(
-                        f"向 Faiss 集合 '{collection_name}' 添加文档时发生异常: {e}", stack_info=True
+                        f"向 Faiss 集合 '{collection_name}' 添加文档时发生异常: {e}",
+                        stack_info=True,
                     )
                     retry_cnt -= 1
                     if retry_cnt == 0:
                         excerpt = doc.text_content[:100].replace("\n", "")
-                        logger.error(
-                            f"批次添加失败，文档 {excerpt}... 将被丢弃。"
-                        )
+                        logger.error(f"批次添加失败，文档 {excerpt}... 将被丢弃。")
                     await asyncio.sleep(1)
         return all_doc_ids
 
@@ -179,9 +185,7 @@ class FaissStore(VectorDBBase):
         for i in range(0, len(documents), DEFAULT_BATCH_SIZE):
             batch_docs = documents[i : i + DEFAULT_BATCH_SIZE]
             processing_batch = ProcessingBatch(documents=batch_docs)
-            tasks.append(
-                self._batch_process_task(processing_batch, collection_name)
-            )
+            tasks.append(self._batch_process_task(processing_batch, collection_name))
             num_batches += 1
         logger.info(
             f"向 Faiss 集合 '{collection_name}' 添加 {len(documents)} 个文档，共分为 {num_batches} 个批次进行处理。"

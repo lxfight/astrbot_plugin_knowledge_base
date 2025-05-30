@@ -167,21 +167,39 @@ class EmbeddingUtil:
         if hasattr(self, "client") and self.client:
             await self.client.close()
 
-class EmbeddingSolutionHelper():
+
+class EmbeddingSolutionHelper:
     """适配 AstrBot 的 Embedding 方案专用的帮助类。
 
     Required:
         - AstrBot Version: >= v3.5.13
     """
-    def __init__(self, curr_embedding_util: EmbeddingUtil, context: Context, user_prefs_handler: UserPrefsHandler):
+
+    def __init__(
+        self,
+        curr_embedding_dimensions: int,
+        curr_embedding_util: EmbeddingUtil,
+        context: Context,
+        user_prefs_handler: UserPrefsHandler,
+    ):
+        self.curr_embedding_dimensions = curr_embedding_dimensions
         self.curr_embedding_util = curr_embedding_util
         self.context = context
         self.user_prefs_handler = user_prefs_handler
 
-    async def _get_embedding_via_astrbot_provider(self, text: str | list[str], collection_name: str) -> list[float] | list[list[float]]:
+    async def _get_embedding_via_astrbot_provider(
+        self, text: str | list[str], collection_name: str
+    ) -> list[float] | list[list[float]]:
         """通过 AstrBot 提供商获取单个文本的 embedding"""
         from astrbot.core.provider.provider import EmbeddingProvider
-        astrbot_embedding_provider_id = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {}).get(collection_name, {}).get("embedding_provider_id", None)
+
+        astrbot_embedding_provider_id = (
+            self.user_prefs_handler.user_collection_preferences.get(
+                "collection_metadata", {}
+            )
+            .get(collection_name, {})
+            .get("embedding_provider_id", None)
+        )
         if astrbot_embedding_provider_id:
             provider = self.context.get_provider_by_id(astrbot_embedding_provider_id)
             if provider and isinstance(provider, EmbeddingProvider):
@@ -197,23 +215,65 @@ class EmbeddingSolutionHelper():
             raise ValueError(
                 f"未找到适用于集合 '{collection_name}' 的 AstrBot 嵌入提供商。请检查用户偏好设置或集合元数据。"
             )
-    
-    async def get_embedding_async(self, text: str, collection_name: str) -> Optional[List[float]]:
+
+    def _get_embedding_dimensions_via_astrbot_provider(
+        self, collection_name: str
+    ) -> int:
+        """通过 AstrBot 提供商获取对应提供商的嵌入模型的维度"""
+        from astrbot.core.provider.provider import EmbeddingProvider
+
+        astrbot_embedding_provider_id = (
+            self.user_prefs_handler.user_collection_preferences.get(
+                "collection_metadata", {}
+            )
+            .get(collection_name, {})
+            .get("embedding_provider_id", None)
+        )
+        if astrbot_embedding_provider_id:
+            provider = self.context.get_provider_by_id(astrbot_embedding_provider_id)
+            if provider and isinstance(provider, EmbeddingProvider):
+                return provider.get_dim()
+        else:
+            raise ValueError(
+                f"未找到适用于集合 '{collection_name}' 的 AstrBot 嵌入提供商。请检查用户偏好设置或集合元数据。"
+            )
+
+    async def get_embedding_async(
+        self, text: str, collection_name: str
+    ) -> Optional[List[float]]:
         """获取单个文本的 embedding，并更新用户偏好设置"""
-        astrbot_embedding_provider_id = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {}).get(collection_name, {}).get("embedding_provider_id", None)
+        astrbot_embedding_provider_id = (
+            self.user_prefs_handler.user_collection_preferences.get(
+                "collection_metadata", {}
+            )
+            .get(collection_name, {})
+            .get("embedding_provider_id", None)
+        )
         if astrbot_embedding_provider_id:
             # we assume that if embedding_provider_id is set, it should be Version >= 3.5.13
-            embedding = await self._get_embedding_via_astrbot_provider(text, collection_name)
+            embedding = await self._get_embedding_via_astrbot_provider(
+                text, collection_name
+            )
         else:
             embedding = await self.curr_embedding_util.get_embedding_async(text)
         return embedding
 
-    async def get_embeddings_async(self, texts: List[str], collection_name: str) -> List[Optional[List[float]]]:
+    async def get_embeddings_async(
+        self, texts: List[str], collection_name: str
+    ) -> List[Optional[List[float]]]:
         """获取多个文本的 embedding，并更新用户偏好设置"""
-        astrbot_embedding_provider_id = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {}).get(collection_name, {}).get("embedding_provider_id", None)
+        astrbot_embedding_provider_id = (
+            self.user_prefs_handler.user_collection_preferences.get(
+                "collection_metadata", {}
+            )
+            .get(collection_name, {})
+            .get("embedding_provider_id", None)
+        )
         if astrbot_embedding_provider_id:
             # we assume that if embedding_provider_id is set, it should be Version >= 3.5.13
-            embeddings = await self._get_embedding_via_astrbot_provider(texts, collection_name)
+            embeddings = await self._get_embedding_via_astrbot_provider(
+                texts, collection_name
+            )
         else:
             embeddings = await self.curr_embedding_util.get_embeddings_async(texts)
         return embeddings
@@ -221,3 +281,17 @@ class EmbeddingSolutionHelper():
     async def close(self):
         """关闭当前的 EmbeddingUtil 客户端"""
         await self.curr_embedding_util.close()
+
+    def get_dimensions(self, collection_name) -> int:
+        astrbot_embedding_provider_id = (
+            self.user_prefs_handler.user_collection_preferences.get(
+                "collection_metadata", {}
+            )
+            .get(collection_name, {})
+            .get("embedding_provider_id", None)
+        )
+        if astrbot_embedding_provider_id:
+            # we assume that if embedding_provider_id is set, it should be Version >= 3.5.13
+            return self._get_embedding_dimensions_via_astrbot_provider(collection_name)
+        else:
+            return self.curr_embedding_dimensions

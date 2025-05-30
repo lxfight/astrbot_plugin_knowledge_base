@@ -37,7 +37,7 @@ class RecursiveCharacterTextSplitter:
             "",  # 字符
         ]
 
-    def split_text(self, text: str) -> List[str]:
+    def split_text(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
         """
         递归地将文本分割成块
 
@@ -50,13 +50,16 @@ class RecursiveCharacterTextSplitter:
         if not text:
             return []
 
+        chunk_size = chunk_size or self.chunk_size
+        overlap = overlap or self.chunk_overlap
+
         text_length = self.length_function(text)
-        if text_length <= self.chunk_size:
+        if text_length <= chunk_size:
             return [text]
 
         for separator in self.separators:
             if separator == "":
-                return self._split_by_character(text)
+                return self._split_by_character(text, chunk_size, overlap)
 
             if separator in text:
                 splits = text.split(separator)
@@ -75,7 +78,7 @@ class RecursiveCharacterTextSplitter:
                     split_length = self.length_function(split)
 
                     # 如果单个分割部分已经超过了chunk_size，需要递归分割
-                    if split_length > self.chunk_size:
+                    if split_length > chunk_size:
                         # 先处理当前积累的块
                         if current_chunk:
                             combined_text = "".join(current_chunk)
@@ -86,13 +89,13 @@ class RecursiveCharacterTextSplitter:
                         # 递归分割过大的部分
                         final_chunks.extend(self.split_text(split))
                     # 如果添加这部分会使当前块超过chunk_size
-                    elif current_chunk_length + split_length > self.chunk_size:
+                    elif current_chunk_length + split_length > chunk_size:
                         # 合并当前块并添加到结果中
                         combined_text = "".join(current_chunk)
                         final_chunks.append(combined_text)
 
                         # 处理重叠部分
-                        overlap_start = max(0, len(combined_text) - self.chunk_overlap)
+                        overlap_start = max(0, len(combined_text) - overlap)
                         if overlap_start > 0:
                             overlap_text = combined_text[overlap_start:]
                             current_chunk = [overlap_text, split]
@@ -115,7 +118,7 @@ class RecursiveCharacterTextSplitter:
 
         return [text]
 
-    def _split_by_character(self, text: str) -> List[str]:
+    def _split_by_character(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
         """
         按字符级别分割文本
 
@@ -125,9 +128,11 @@ class RecursiveCharacterTextSplitter:
         Returns:
             分割后的文本块列表
         """
+        chunk_size = chunk_size or self.chunk_size
+        overlap = overlap or self.chunk_overlap
         result = []
-        for i in range(0, len(text), self.chunk_size - self.chunk_overlap):
-            end = min(i + self.chunk_size, len(text))
+        for i in range(0, len(text), chunk_size - overlap):
+            end = min(i + chunk_size, len(text))
             result.append(text[i:end])
             if end == len(text):
                 break
@@ -154,7 +159,7 @@ class TextSplitterUtil:
         )
         # logger.info(f"文本分割器初始化：chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
 
-    def split_text(self, text: str) -> List[str]:
+    def split_text(self, text: str, chunk_size: int = None, overlap = None) -> List[str]:
         """
         将文本分割成块。
         Args:
@@ -164,7 +169,7 @@ class TextSplitterUtil:
         """
         if not text or not text.strip():
             return []
-        return self.splitter.split_text(text)
+        return self.splitter.split_text(text, chunk_size, overlap)
 
 
 # 基于 tiktoken 的分割器

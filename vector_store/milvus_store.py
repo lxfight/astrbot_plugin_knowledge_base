@@ -32,7 +32,6 @@ class MilvusStore(VectorDBBase):
     def __init__(
         self,
         embedding_util,
-        dimension: int,
         data_path: str,  # data_path for consistency, not used by remote
         host: str,
         port: str,
@@ -40,9 +39,7 @@ class MilvusStore(VectorDBBase):
         password: Optional[str] = None,
         **kwargs,
     ):
-        super().__init__(
-            embedding_util, dimension, data_path
-        )  # data_path 传给基类，但此类不用
+        super().__init__(embedding_util, data_path)  # data_path 传给基类，但此类不用
         self.kwargs = kwargs
         # 可以为加载等待设置默认值，如果kwargs中没有提供
         self.kwargs.setdefault("load_wait_timeout", 60)  # 默认等待60秒
@@ -414,7 +411,9 @@ class MilvusStore(VectorDBBase):
             max_length=self.pk_max_length,
         )
         vector_field = FieldSchema(
-            name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.dimension
+            name="embedding",
+            dtype=DataType.FLOAT_VECTOR,
+            dim=self.embedding_util.get_dimensions(collection_name),
         )
         text_content_field = FieldSchema(
             name="text_content",
@@ -732,7 +731,9 @@ class MilvusStore(VectorDBBase):
             )
             return []
 
-        query_embedding = await self.embedding_util.get_embedding_async(query_text, collection_name)
+        query_embedding = await self.embedding_util.get_embedding_async(
+            query_text, collection_name
+        )
         if query_embedding is None:
             logger.error("无法为查询文本生成 embedding。")
             return []

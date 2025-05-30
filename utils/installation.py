@@ -140,9 +140,6 @@ def ensure_vector_db_dependencies(
         "numpy", ">=2.2.0", friendly_name="Numpy"
     )
     core_deps_ok &= _check_and_install_package_uv(
-        "langchain_text_splitters", ">=0.3.8", friendly_name="Langchain Text Splitters"
-    )
-    core_deps_ok &= _check_and_install_package_uv(
         "markitdown[all]", ">=0.1.0", friendly_name="markitdown[all]"
     )
 

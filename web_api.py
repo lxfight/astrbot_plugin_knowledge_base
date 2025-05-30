@@ -8,7 +8,7 @@ from .utils.text_splitter import TextSplitterUtil
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from .utils.file_parser import FileParser, LLM_Config
 from astrbot import logger
-from astrbot.api import logger, AstrBotConfig
+from astrbot.api import AstrBotConfig
 from astrbot.core.config.default import VERSION
 from .core.user_prefs_handler import UserPrefsHandler
 
@@ -30,7 +30,9 @@ class KnowledgeBaseWebAPI:
         self.plugin_config = plugin_config
 
         if VERSION < "3.5.13":
-            raise RuntimeError("AstrBot 版本过低，无法支持 FAISS 存储，请升级 AstrBot 至 3.5.13 或更高版本。")
+            raise RuntimeError(
+                "AstrBot 版本过低，无法支持 FAISS 存储，请升级 AstrBot 至 3.5.13 或更高版本。"
+            )
 
         self.astrbot_context.register_web_api(
             "/alkaid/kb/create_collection",
@@ -82,20 +84,27 @@ class KnowledgeBaseWebAPI:
         if not embedding_provider_id:
             return Response().error("缺少嵌入提供商 ID").__dict__
         try:
-            await self.vec_db.create_collection(collection_name)
             # 添加集合元数据
             metadata = {
-                "version": 1, # metadata 配置版本
+                "version": 1,  # metadata 配置版本
                 "emoji": emoji,
                 "description": description,
                 "created_at": int(time.time()),
                 "origin": "astrbot-webui",
-                "embedding_provider_id": embedding_provider_id, # AstrBot 嵌入提供商 ID
+                "embedding_provider_id": embedding_provider_id,  # AstrBot 嵌入提供商 ID
             }
-            collection_metadata = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {})
+            collection_metadata = (
+                self.user_prefs_handler.user_collection_preferences.get(
+                    "collection_metadata", {}
+                )
+            )
             collection_metadata[collection_name] = metadata
-            self.user_prefs_handler.user_collection_preferences["collection_metadata"] = collection_metadata
+            self.user_prefs_handler.user_collection_preferences[
+                "collection_metadata"
+            ] = collection_metadata
             await self.user_prefs_handler.save_user_preferences()
+            # 兼容性问题，create_collection 方法放在上一步之后执行。
+            await self.vec_db.create_collection(collection_name)
             return Response().ok("集合创建成功").__dict__
         except Exception as e:
             return Response().error(f"创建集合失败: {str(e)}").__dict__
@@ -108,10 +117,24 @@ class KnowledgeBaseWebAPI:
         try:
             collections = await self.vec_db.list_collections()
             result = []
-            collection_metadata = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {})
+            collections_metadata = (
+                self.user_prefs_handler.user_collection_preferences.get(
+                    "collection_metadata", {}
+                )
+            )
             for collection in collections:
+                collection_md = collections_metadata.get(collection, {})
+                if "embedding_provider_id" in collection_md:
+                    p_id = collection_md.get("embedding_provider_id", "")
+                    provider = self.astrbot_context.get_provider_by_id(p_id)
+                    if provider:
+                        collection_md["_embedding_provider_config"] = (
+                            provider.provider_config
+                        )
                 count = await self.vec_db.count_documents(collection)
-                result.append({"collection_name": collection, "count": count, **collection_metadata.get(collection, {})})
+                result.append(
+                    {"collection_name": collection, "count": count, **collection_md}
+                )
             return Response().ok(data=result).__dict__
         except Exception as e:
             return Response().error(f"获取集合列表失败: {str(e)}").__dict__
@@ -125,19 +148,25 @@ class KnowledgeBaseWebAPI:
         """
         upload_file = (await request.files).get("file")
         collection_name = (await request.form).get("collection_name")
+        chunk_size = (await request.form).get("chunk_size", None)
+        overlap = (await request.form).get("chunk_overlap", None)
         if not upload_file or not collection_name:
             return Response().error("缺少知识库名称").__dict__
         if not await self.vec_db.collection_exists(collection_name):
             return Response().error("目标知识库不存在").__dict__
 
         try:
+            chunk_size = int(chunk_size)
+            overlap = int(overlap)
             path = os.path.join(get_astrbot_data_path(), "temp", upload_file.filename)
             await upload_file.save(path)
             content = await self.fp.parse_file_content(path)
             if not content:
                 raise ValueError("文件内容为空或不支持的格式")
 
-            chunks = self.text_splitter.split_text(content)
+            chunks = self.text_splitter.split_text(
+                text=content, chunk_size=chunk_size, overlap=overlap
+            )
             if not chunks:
                 raise Exception("chunk 内容为空")
 
@@ -164,7 +193,14 @@ class KnowledgeBaseWebAPI:
                 )
                 if not doc_ids:
                     raise Exception("添加文档失败，返回的文档 ID 为空")
-                return Response().ok(data=doc_ids,message=f"成功从文件 '{upload_file.filename}' 添加 {len(doc_ids)} 条知识到 '{collection_name}'。",).__dict__
+                return (
+                    Response()
+                    .ok(
+                        data=doc_ids,
+                        message=f"成功从文件 '{upload_file.filename}' 添加 {len(doc_ids)} 条知识到 '{collection_name}'。",
+                    )
+                    .__dict__
+                )
             except Exception as e:
                 raise Exception(f"添加文档失败: {str(e)}。")
 
@@ -172,8 +208,7 @@ class KnowledgeBaseWebAPI:
             logger.error(f"添加文档失败: {str(e)}")
             if os.path.exists(path):
                 os.remove(path)
-            return Response().error(f"添加文档失败").__dict__
-            
+            return Response().error(f"添加文档失败: {str(e)}").__dict__
 
     async def search_documents(self):
         """

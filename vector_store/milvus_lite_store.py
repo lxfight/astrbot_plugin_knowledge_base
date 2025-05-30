@@ -14,8 +14,8 @@ import asyncio
 
 
 class MilvusLiteStore(VectorDBBase):
-    def __init__(self, embedding_util, dimension: int, data_path: str, **kwargs):
-        super().__init__(embedding_util, dimension, data_path)
+    def __init__(self, embedding_util, data_path: str, **kwargs):
+        super().__init__(embedding_util, data_path)
         self.client: Optional[MilvusClient] = None
         self.metric_type = kwargs.get("metric_type", "L2")
         # 定义 VARCHAR 字段的默认最大长度
@@ -103,7 +103,7 @@ class MilvusLiteStore(VectorDBBase):
             vector_field = FieldSchema(
                 name="embedding",
                 dtype=DataType.FLOAT_VECTOR,
-                dim=self.dimension,
+                dim=self.embedding_util.get_dimensions(collection_name),
             )
             text_content_field = FieldSchema(
                 name="text_content",

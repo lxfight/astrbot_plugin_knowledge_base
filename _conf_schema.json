@@ -9,30 +9,6 @@
             "milvus"
         ]
     },
-    "embedding_api_url": {
-        "description": "OpenAI 兼容的 Embedding API 地址 ",
-        "type": "string",
-        "default": "https://api.openai.com/v1",
-        "hint": "例如: https://api.openai.com/v1。当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。"
-    },
-    "embedding_api_key": {
-        "description": "Embedding API 密钥",
-        "type": "string",
-        "default": "sk-your-key",
-        "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。"
-    },
-    "embedding_model_name": {
-        "description": "Embedding 模型名称",
-        "type": "string",
-        "default": "text-embedding-v3",
-        "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。"
-    },
-    "embedding_dimension": {
-        "description": "Embedding 向量维度",
-        "type": "int",
-        "default": 1024,
-        "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。"
-    },
     "default_collection_name": {
         "description": "默认知识库集合名称",
         "type": "string",
@@ -99,5 +75,29 @@
         "type": "bool",
         "default": false,
         "hint": "如果启用，则会消耗AstrBot当前使用的提供商Token。（仅支持OpenAI兼容的提供商）"
+    },
+    "embedding_api_url": {
+        "description": "[备用] OpenAI 兼容的 Embedding API 地址 ",
+        "type": "string",
+        "default": "https://api.openai.com/v1",
+        "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。（此项为 AstrBot 版本 < 3.5.13 用户设计，其他版本用户请忽略）"
+    },
+    "embedding_api_key": {
+        "description": "[备用] Embedding API 密钥",
+        "type": "string",
+        "default": "sk-your-key",
+        "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。（此项为 AstrBot 版本 < 3.5.13 用户设计，其他版本用户请忽略）"
+    },
+    "embedding_model_name": {
+        "description": "[备用] Embedding 模型名称",
+        "type": "string",
+        "default": "text-embedding-v3",
+        "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。（此项为 AstrBot 版本 < 3.5.13 用户设计，其他版本用户请忽略）"
+    },
+    "embedding_dimension": {
+        "description": "[备用] Embedding 向量维度",
+        "type": "int",
+        "default": 1024,
+        "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。（此项为 AstrBot 版本 < 3.5.13 用户设计，其他版本用户请忽略）"
     }
 }
