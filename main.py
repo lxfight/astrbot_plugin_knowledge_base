@@ -10,7 +10,6 @@ from astrbot.core.utils.session_waiter import (
     session_waiter,
     SessionController,
 )
-from astrbot.core.config.default import VERSION
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import StarTools
 
@@ -21,14 +20,9 @@ from .utils.embedding import EmbeddingUtil
 from .utils.text_splitter import TextSplitterUtil
 from .utils.file_parser import FileParser
 from .vector_store.base import VectorDBBase
-if VERSION < "3.5.12":
-    logger.info("建议升级至 AstrBot v3.5.12 或更高版本。")
-    from .vector_store.faiss_store import FaissStore
-else:
-    from .vector_store.astrbot_faiss_store import FaissStore
+from .vector_store.faiss_store import FaissStore
 from .vector_store.milvus_lite_store import MilvusLiteStore
 from .vector_store.milvus_store import MilvusStore
-from .web_api import KnowledgeBaseWebAPI
 from .core.user_prefs_handler import UserPrefsHandler
 from .core.llm_enhancer import clean_contexts_from_kb_content, enhance_request_with_kb
 from .commands import (
@@ -71,7 +65,6 @@ class KnowledgeBasePlugin(Star):
         self.user_prefs_path = os.path.join(
             self.persistent_data_root_path, "user_collection_prefs.json"
         )
-
 
     async def _initialize_components(self):
         try:
@@ -153,13 +146,6 @@ class KnowledgeBasePlugin(Star):
                 await self.vector_db.initialize()
                 logger.info(f"向量数据库 '{db_type}' 初始化完成。")
 
-            # Web API
-            try:
-                self.web_api = KnowledgeBaseWebAPI(
-                    self.vector_db, self.text_splitter, self.context
-                )
-            except Exception as e:
-                logger.warning(f"知识库 WebAPI 初始化失败，可能导致无法在 WebUI 操作知识库。原因：{e}", exc_info=True)
             self.user_prefs_handler = UserPrefsHandler(
                 self.user_prefs_path, self.vector_db, self.config
             )

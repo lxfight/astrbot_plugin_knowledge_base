@@ -42,3 +42,4 @@ def migrate_docs_to_db(data_path: str):
             # logger.info(f"已删除原始文件 {docs_file}")
         except Exception as e:
             logger.error(f"迁移文件 {docs_file} 失败: {e}")
+
