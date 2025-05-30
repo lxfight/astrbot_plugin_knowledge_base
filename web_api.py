@@ -81,8 +81,8 @@ class KnowledgeBaseWebAPI:
         # embedding_model_name = self.plugin_config.get("embedding_model_name", "")
         # embedding_api_url = self.plugin_config.get("embedding_api_url", "")
         # embedding_api_key = self.plugin_config.get("embedding_api_key", "")
-        if not embedding_model_name or not embedding_api_url or not embedding_api_key:
-            return Response().error("缺少 Embedding 模型配置").__dict__
+        # if not embedding_model_name or not embedding_api_url or not embedding_api_key:
+        #     return Response().error("缺少 Embedding 模型配置").__dict__
         try:
             await self.vec_db.create_collection(collection_name)
             # 添加集合元数据
