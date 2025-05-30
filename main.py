@@ -156,17 +156,22 @@ class KnowledgeBasePlugin(Star):
                 await self.vector_db.initialize()
                 logger.info(f"向量数据库 '{db_type}' 初始化完成。")
 
-            # Web API
-            try:
-                self.web_api = KnowledgeBaseWebAPI(
-                    self.vector_db, self.text_splitter, self.context, self.llm_config
-                )
-            except Exception as e:
-                logger.warning(f"知识库 WebAPI 初始化失败，可能导致无法在 WebUI 操作知识库。原因：{e}", exc_info=True)
             self.user_prefs_handler = UserPrefsHandler(
                 self.user_prefs_path, self.vector_db, self.config
             )
             await self.user_prefs_handler.load_user_preferences()
+
+            # Web API
+            try:
+                self.web_api = KnowledgeBaseWebAPI(
+                    vec_db=self.vector_db,
+                    text_splitter=self.text_splitter,
+                    astrbot_context=self.context,
+                    llm_config=self.llm_config,
+                    user_prefs_handler=self.user_prefs_handler
+                )
+            except Exception as e:
+                logger.warning(f"知识库 WebAPI 初始化失败，可能导致无法在 WebUI 操作知识库。原因：{e}", exc_info=True)
 
             logger.info("知识库插件初始化成功。")
 

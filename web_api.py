@@ -1,4 +1,5 @@
 import os
+import time
 from astrbot.api.star import Context
 from .vector_store.base import VectorDBBase, Document
 from quart import request
@@ -8,6 +9,7 @@ from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from .utils.file_parser import FileParser, LLM_Config
 from astrbot import logger
 from astrbot.core.config.default import VERSION
+from .core.user_prefs_handler import UserPrefsHandler
 
 
 class KnowledgeBaseWebAPI:
@@ -17,10 +19,12 @@ class KnowledgeBaseWebAPI:
         text_splitter: TextSplitterUtil,
         astrbot_context: Context,
         llm_config: LLM_Config,
+        user_prefs_handler: UserPrefsHandler = None,
     ):
         self.vec_db = vec_db
         self.text_splitter = text_splitter
         self.astrbot_context = astrbot_context
+        self.user_prefs_handler = user_prefs_handler
 
         if VERSION < "3.5.13":
             raise RuntimeError("AstrBot 版本过低，无法支持 FAISS 存储，请升级 AstrBot 至 3.5.13 或更高版本。")
@@ -65,12 +69,25 @@ class KnowledgeBaseWebAPI:
         """
         data = await request.get_json()
         collection_name = data.get("collection_name")
+        emoji = data.get("emoji", "🙂")
+        description = data.get("description", "")
         if not collection_name:
             return Response().error("缺少集合名称").__dict__
         if await self.vec_db.collection_exists(collection_name):
             return Response().error("集合已存在").__dict__
         try:
             await self.vec_db.create_collection(collection_name)
+            # 添加集合元数据
+            metadata = {
+                "emoji": emoji,
+                "description": description,
+                "created_at": int(time.time()),
+                "origin": "astrbot-webui",
+            }
+            collection_metadata = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {})
+            collection_metadata[collection_name] = metadata
+            self.user_prefs_handler.user_collection_preferences["collection_metadata"] = collection_metadata
+            await self.user_prefs_handler.save_user_preferences()
             return Response().ok("集合创建成功").__dict__
         except Exception as e:
             return Response().error(f"创建集合失败: {str(e)}").__dict__
@@ -83,9 +100,10 @@ class KnowledgeBaseWebAPI:
         try:
             collections = await self.vec_db.list_collections()
             result = []
+            collection_metadata = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {})
             for collection in collections:
                 count = await self.vec_db.count_documents(collection)
-                result.append({"collection_name": collection, "count": count})
+                result.append({"collection_name": collection, "count": count, **collection_metadata.get(collection, {})})
             return Response().ok(data=result).__dict__
         except Exception as e:
             return Response().error(f"获取集合列表失败: {str(e)}").__dict__
