@@ -333,16 +333,16 @@ class KnowledgeBasePlugin(Star):
     @kb_group.command("create", alias={"创建"})
     async def kb_create_collection(self, event: AstrMessageEvent, collection_name: str):
         """创建一个新的知识库"""
-        # TODO: 目前仅支持在 WebUI 中创建知识库，后续可考虑添加命令行创建功能。
-        yield event.plain_result("请在 WebUI 中使用知识库创建功能。")
-        return
-        # if not await self._ensure_initialized():
-        #     yield event.plain_result("知识库插件未初始化，请联系管理员。")
-        #     return
-        # async for result in manage_commands.handle_create_collection(
-        #     self, event, collection_name
-        # ):
-        #     yield result
+        if VERSION >= "3.5.13":
+            yield event.plain_result("请在 WebUI 中使用知识库创建功能。")
+            return
+        if not await self._ensure_initialized():
+            yield event.plain_result("知识库插件未初始化，请联系管理员。")
+            return
+        async for result in manage_commands.handle_create_collection(
+            self, event, collection_name
+        ):
+            yield result
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @kb_group.command("delete", alias={"删除"})
