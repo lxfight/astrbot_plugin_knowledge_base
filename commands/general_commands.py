@@ -13,6 +13,7 @@ async def handle_kb_help(
 /kb add text <内容> [知识库名] - 添加文本到知识库
 /kb add file <文件路径或者下载链接> [知识库名]
 /kb search <查询内容> [数量] [知识库名]- 搜索知识库
+/kb create <知识库名> - 创建一个新的知识库
 /kb list - 列出所有知识库
 /kb current - 查看当前会话默认知识库
 /kb use <知识库名> - 设置当前会话默认知识库
