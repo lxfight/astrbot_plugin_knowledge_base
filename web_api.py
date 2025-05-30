@@ -74,29 +74,23 @@ class KnowledgeBaseWebAPI:
         collection_name = data.get("collection_name")
         emoji = data.get("emoji", "🙂")
         description = data.get("description", "")
+        embedding_provider_id = data.get("embedding_provider_id", None)
         if not collection_name:
             return Response().error("缺少集合名称").__dict__
         if await self.vec_db.collection_exists(collection_name):
             return Response().error("集合已存在").__dict__
-        # embedding_model_name = self.plugin_config.get("embedding_model_name", "")
-        # embedding_api_url = self.plugin_config.get("embedding_api_url", "")
-        # embedding_api_key = self.plugin_config.get("embedding_api_key", "")
-        # if not embedding_model_name or not embedding_api_url or not embedding_api_key:
-        #     return Response().error("缺少 Embedding 模型配置").__dict__
+        if not embedding_provider_id:
+            return Response().error("缺少嵌入提供商 ID").__dict__
         try:
             await self.vec_db.create_collection(collection_name)
             # 添加集合元数据
             metadata = {
+                "version": 1, # metadata 配置版本
                 "emoji": emoji,
                 "description": description,
                 "created_at": int(time.time()),
                 "origin": "astrbot-webui",
-                # "embedding_provider": {
-                #     "type": "openai",
-                #     "model": embedding_model_name,
-                #     "api_base": embedding_api_url,
-                #     "api_key": embedding_api_key,
-                # }
+                "embedding_provider_id": embedding_provider_id, # AstrBot 嵌入提供商 ID
             }
             collection_metadata = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {})
             collection_metadata[collection_name] = metadata
@@ -170,24 +164,16 @@ class KnowledgeBaseWebAPI:
                 )
                 if not doc_ids:
                     raise Exception("添加文档失败，返回的文档 ID 为空")
-                return (
-                    Response()
-                    .ok(
-                        data=doc_ids,
-                        message=f"成功从文件 '{upload_file.filename}' 添加 {len(doc_ids)} 条知识到 '{collection_name}'。",
-                    )
-                    .__dict__
-                )
+                return Response().ok(data=doc_ids,message=f"成功从文件 '{upload_file.filename}' 添加 {len(doc_ids)} 条知识到 '{collection_name}'。",).__dict__
             except Exception as e:
                 raise Exception(f"添加文档失败: {str(e)}。")
 
         except Exception as e:
             logger.error(f"添加文档失败: {str(e)}")
-        finally:
             if os.path.exists(path):
                 os.remove(path)
             return Response().error(f"添加文档失败").__dict__
-
+            
 
     async def search_documents(self):
         """

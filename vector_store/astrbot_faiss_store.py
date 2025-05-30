@@ -28,19 +28,30 @@ def _check_pickle_file(file_path: str) -> bool:
 class AstrBotEmbeddingProviderWrapper(EmbeddingProvider):
     """AstrBot Embedding Provider 包装类"""
 
-    def __init__(self, embedding_util, dimension: int):
+    def __init__(self, embedding_util, dimension: int, collection_name: str):
         self.embedding_util = embedding_util
         self.dimension = dimension
+        self.collection_name = collection_name
 
     async def get_embedding(self, text: str) -> List[float]:
-        vec = await self.embedding_util.get_embedding_async(text)
+        vec = await self.embedding_util.get_embedding_async(text, self.collection_name)
         if not vec:
             raise ValueError(
                 "获取向量失败，返回的向量为空或无效。请检查输入文本和配置。"
             )
         return vec
+    
+    async def get_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """批量获取文本的嵌入"""
+        vecs = await self.embedding_util.get_embeddings_async(texts, self.collection_name)
+        if not vecs:
+            raise ValueError(
+                "获取向量失败，返回的向量为空或无效。请检查输入文本和配置。"
+            )
+        return vecs
 
     def get_dim(self) -> int:
+        # NOTE: 不应该调用这个方法。
         return self.dimension
 
 
@@ -52,9 +63,7 @@ class FaissStore(VectorDBBase):
         self.vecdbs: Dict[str, FaissVecDB] = {}
         self._old_faiss_store: OldFaissStore = None
         self._old_collections = {}
-        self.embedding_util = AstrBotEmbeddingProviderWrapper(
-            embedding_util=embedding_util, dimension=dimension
-        )
+        self.embedding_utils: Dict[str, AstrBotEmbeddingProviderWrapper] = {}
         os.makedirs(self.data_path, exist_ok=True)
 
     async def initialize(self):
@@ -77,10 +86,15 @@ class FaissStore(VectorDBBase):
             return
 
         try:
+            self.embedding_utils[collection_name] = AstrBotEmbeddingProviderWrapper(
+                embedding_util=self.embedding_util,
+                dimension=self.dimension,
+                collection_name=collection_name,
+            )
             self.vecdbs[collection_name] = FaissVecDB(
                 doc_store_path=storage_path,
                 index_store_path=index_path,
-                embedding_provider=self.embedding_util,
+                embedding_provider= self.embedding_utils[collection_name],
             )
             await self.vecdbs[collection_name].initialize()
         except Exception as e:
@@ -100,10 +114,15 @@ class FaissStore(VectorDBBase):
 
         index_path = os.path.join(self.data_path, f"{collection_name}.index")
         storage_path = os.path.join(self.data_path, f"{collection_name}.db")
+        self.embedding_utils[collection_name] = AstrBotEmbeddingProviderWrapper(
+            embedding_util=self.embedding_util,
+            dimension=self.dimension,
+            collection_name=collection_name,
+        )
         self.vecdbs[collection_name] = FaissVecDB(
             doc_store_path=storage_path,
             index_store_path=index_path,
-            embedding_provider=self.embedding_util,
+            embedding_provider= self.embedding_utils[collection_name],
         )
         await self.vecdbs[collection_name].initialize()
         await self.vecdbs[collection_name].embedding_storage.save_index()
@@ -128,6 +147,8 @@ class FaissStore(VectorDBBase):
                     all_doc_ids.append(id)
                     break
                 except Exception as e:
+                    import traceback
+                    traceback.print_exc()
                     logger.error(
                         f"向 Faiss 集合 '{collection_name}' 添加文档时发生异常: {e}", stack_info=True
                     )

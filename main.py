@@ -17,7 +17,7 @@ from astrbot.api.star import StarTools
 
 from .core import constants
 from .utils.installation import ensure_vector_db_dependencies
-from .utils.embedding import EmbeddingUtil
+from .utils.embedding import EmbeddingUtil, EmbeddingSolutionHelper
 from .utils.text_splitter import TextSplitterUtil
 from .utils.file_parser import FileParser, LLM_Config
 from .vector_store.base import VectorDBBase
@@ -53,7 +53,7 @@ class KnowledgeBasePlugin(Star):
         self._initialize_basic_paths()
 
         self.vector_db: Optional[VectorDBBase] = None
-        self.embedding_util: Optional[Union[EmbeddingUtil, Star]] = None
+        self.embedding_util: Optional[EmbeddingSolutionHelper] = None
         self.text_splitter: Optional[TextSplitterUtil] = None
         self.file_parser: Optional[FileParser] = None
         self.user_prefs_handler: Optional[UserPrefsHandler] = None
@@ -75,15 +75,26 @@ class KnowledgeBasePlugin(Star):
     async def _initialize_components(self):
         try:
             logger.info("知识库插件开始初始化...")
+            # User Preferences Handler
+            self.user_prefs_handler = UserPrefsHandler(
+                self.user_prefs_path, self.vector_db, self.config
+            )
+            await self.user_prefs_handler.load_user_preferences()
+
             # Embedding Util
             try:
                 embedding_plugin = self.context.get_registered_star(
                     "astrbot_plugin_embedding_adapter"
                 )
                 if embedding_plugin:
-                    self.embedding_util = embedding_plugin.star_cls
-                    dim = self.embedding_util.get_dim()
-                    model_name = self.embedding_util.get_model_name()
+                    embedding_util = embedding_plugin.star_cls
+                    dim = embedding_util.get_dim()
+                    model_name = embedding_util.get_model_name()
+                    self.embedding_util = EmbeddingSolutionHelper(
+                        curr_embedding_util=embedding_util,
+                        context=self.context,
+                        user_prefs_handler=self.user_prefs_handler,
+                    )
                     if dim is not None and model_name is not None:
                         self.config["embedding_dimension"] = dim
                         self.config["embedding_model_name"] = model_name
@@ -93,10 +104,15 @@ class KnowledgeBasePlugin(Star):
                 self.embedding_util = None  # Fallback
 
             if self.embedding_util is None:  # If adapter failed or not found
-                self.embedding_util = EmbeddingUtil(
+                embedding_util = EmbeddingUtil(
                     api_url=self.config.get("embedding_api_url"),
                     api_key=self.config.get("embedding_api_key"),
                     model_name=self.config.get("embedding_model_name"),
+                )
+                self.embedding_util = EmbeddingSolutionHelper(
+                    curr_embedding_util=embedding_util,
+                    context=self.context,
+                    user_prefs_handler=self.user_prefs_handler,
                 )
             logger.info("Embedding 工具初始化完成。")
 
@@ -155,11 +171,6 @@ class KnowledgeBasePlugin(Star):
             if self.vector_db:
                 await self.vector_db.initialize()
                 logger.info(f"向量数据库 '{db_type}' 初始化完成。")
-
-            self.user_prefs_handler = UserPrefsHandler(
-                self.user_prefs_path, self.vector_db, self.config
-            )
-            await self.user_prefs_handler.load_user_preferences()
 
             # Web API
             try:

@@ -13,22 +13,25 @@
         "description": "OpenAI 兼容的 Embedding API 地址 ",
         "type": "string",
         "default": "https://api.openai.com/v1",
-        "hint": "(例如: https://api.openai.com/v1)"
+        "hint": "例如: https://api.openai.com/v1。当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。"
     },
     "embedding_api_key": {
         "description": "Embedding API 密钥",
         "type": "string",
-        "default": "sk-your-key"
+        "default": "sk-your-key",
+        "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。"
     },
     "embedding_model_name": {
         "description": "Embedding 模型名称",
         "type": "string",
-        "default": "text-embedding-v3"
+        "default": "text-embedding-v3",
+        "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。"
     },
     "embedding_dimension": {
         "description": "Embedding 向量维度",
         "type": "int",
-        "default": 1024
+        "default": 1024,
+        "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。"
     },
     "default_collection_name": {
         "description": "默认知识库集合名称",

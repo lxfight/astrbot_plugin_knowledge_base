@@ -158,7 +158,7 @@ class FaissStore(VectorDBBase):
                 if current_batch_texts_to_embed:
                     batch_embeddings_generated = (
                         await self.embedding_util.get_embeddings_async(
-                            current_batch_texts_to_embed
+                            current_batch_texts_to_embed, collection_name
                         )
                     )
                     logger.debug(
@@ -269,7 +269,7 @@ class FaissStore(VectorDBBase):
             logger.warning(f"Faiss 集合 '{collection_name}' 不存在。")
             return []
 
-        query_embedding = await self.embedding_util.get_embedding_async(query_text)
+        query_embedding = await self.embedding_util.get_embedding_async(query_text, collection_name)
         if query_embedding is None:
             logger.error("无法为查询文本生成 embedding。")
             return []

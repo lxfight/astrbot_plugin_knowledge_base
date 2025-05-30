@@ -1,5 +1,7 @@
 from typing import List, Optional, Tuple
 from astrbot.api import logger
+from astrbot.api.star import Context
+from ..core.user_prefs_handler import UserPrefsHandler
 from openai import (
     AsyncOpenAI,
     APIError,
@@ -164,3 +166,58 @@ class EmbeddingUtil:
         """关闭 OpenAI 客户端"""
         if hasattr(self, "client") and self.client:
             await self.client.close()
+
+class EmbeddingSolutionHelper():
+    """适配 AstrBot 的 Embedding 方案专用的帮助类。
+
+    Required:
+        - AstrBot Version: >= v3.5.13
+    """
+    def __init__(self, curr_embedding_util: EmbeddingUtil, context: Context, user_prefs_handler: UserPrefsHandler):
+        self.curr_embedding_util = curr_embedding_util
+        self.context = context
+        self.user_prefs_handler = user_prefs_handler
+
+    async def _get_embedding_via_astrbot_provider(self, text: str | list[str], collection_name: str) -> list[float] | list[list[float]]:
+        """通过 AstrBot 提供商获取单个文本的 embedding"""
+        from astrbot.core.provider.provider import EmbeddingProvider
+        astrbot_embedding_provider_id = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {}).get(collection_name, {}).get("embedding_provider_id", None)
+        if astrbot_embedding_provider_id:
+            provider = self.context.get_provider_by_id(astrbot_embedding_provider_id)
+            if provider and isinstance(provider, EmbeddingProvider):
+                if isinstance(text, str):
+                    return await provider.get_embedding(text)
+                elif isinstance(text, list):
+                    return await provider.get_embeddings(text)
+                else:
+                    raise TypeError(
+                        f"Unsupported type for text: {type(text)}. Expected str or list[str]."
+                    )
+        else:
+            raise ValueError(
+                f"未找到适用于集合 '{collection_name}' 的 AstrBot 嵌入提供商。请检查用户偏好设置或集合元数据。"
+            )
+    
+    async def get_embedding_async(self, text: str, collection_name: str) -> Optional[List[float]]:
+        """获取单个文本的 embedding，并更新用户偏好设置"""
+        astrbot_embedding_provider_id = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {}).get(collection_name, {}).get("embedding_provider_id", None)
+        if astrbot_embedding_provider_id:
+            # we assume that if embedding_provider_id is set, it should be Version >= 3.5.13
+            embedding = await self._get_embedding_via_astrbot_provider(text, collection_name)
+        else:
+            embedding = await self.curr_embedding_util.get_embedding_async(text)
+        return embedding
+
+    async def get_embeddings_async(self, texts: List[str], collection_name: str) -> List[Optional[List[float]]]:
+        """获取多个文本的 embedding，并更新用户偏好设置"""
+        astrbot_embedding_provider_id = self.user_prefs_handler.user_collection_preferences.get("collection_metadata", {}).get(collection_name, {}).get("embedding_provider_id", None)
+        if astrbot_embedding_provider_id:
+            # we assume that if embedding_provider_id is set, it should be Version >= 3.5.13
+            embeddings = await self._get_embedding_via_astrbot_provider(texts, collection_name)
+        else:
+            embeddings = await self.curr_embedding_util.get_embeddings_async(texts)
+        return embeddings
+
+    async def close(self):
+        """关闭当前的 EmbeddingUtil 客户端"""
+        await self.curr_embedding_util.close()
