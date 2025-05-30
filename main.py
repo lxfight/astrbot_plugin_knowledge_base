@@ -21,8 +21,8 @@ from .utils.embedding import EmbeddingUtil
 from .utils.text_splitter import TextSplitterUtil
 from .utils.file_parser import FileParser, LLM_Config
 from .vector_store.base import VectorDBBase
-if VERSION < "3.5.12":
-    logger.info("建议升级至 AstrBot v3.5.12 或更高版本。")
+if VERSION < "3.5.13":
+    logger.info("建议升级至 AstrBot v3.5.13 或更高版本。")
     from .vector_store.faiss_store import FaissStore
 else:
     from .vector_store.astrbot_faiss_store import FaissStore

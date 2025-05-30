@@ -22,8 +22,8 @@ class KnowledgeBaseWebAPI:
         self.text_splitter = text_splitter
         self.astrbot_context = astrbot_context
 
-        if VERSION < "3.5.12":
-            raise RuntimeError("AstrBot 版本过低，无法支持 FAISS 存储，请升级 AstrBot 至 3.5.12 或更高版本。")
+        if VERSION < "3.5.13":
+            raise RuntimeError("AstrBot 版本过低，无法支持 FAISS 存储，请升级 AstrBot 至 3.5.13 或更高版本。")
 
         self.astrbot_context.register_web_api(
             "/alkaid/kb/create_collection",
