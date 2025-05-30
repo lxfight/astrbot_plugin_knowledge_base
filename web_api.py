@@ -156,8 +156,8 @@ class KnowledgeBaseWebAPI:
             return Response().error("目标知识库不存在").__dict__
 
         try:
-            chunk_size = int(chunk_size)
-            overlap = int(overlap)
+            chunk_size = int(chunk_size) if chunk_size else None
+            overlap = int(overlap) if overlap else None
             path = os.path.join(get_astrbot_data_path(), "temp", upload_file.filename)
             await upload_file.save(path)
             content = await self.fp.parse_file_content(path)
