@@ -62,9 +62,7 @@ class AstrBotEmbeddingProviderWrapper(EmbeddingProvider):
 class FaissStore(VectorDBBase):
     """对 AstrBot FaissVecDB 的包装类，以适应 KB 的接口规范"""
 
-    def __init__(
-        self, embedding_util: EmbeddingSolutionHelper, data_path: str
-    ):
+    def __init__(self, embedding_util: EmbeddingSolutionHelper, data_path: str):
         super().__init__(embedding_util, data_path)
         self.vecdbs: Dict[str, FaissVecDB] = {}
         self._old_faiss_store: OldFaissStore = None
@@ -78,8 +76,15 @@ class FaissStore(VectorDBBase):
         logger.info(f"Faiss 存储初始化完成。已加载集合: {list(self.vecdbs.keys())}")
 
     async def _load_collection(self, collection_name: str):
-        index_path = os.path.join(self.data_path, f"{collection_name}.index")
-        storage_path = os.path.join(self.data_path, f"{collection_name}.db")
+        collection_md = (
+            self.embedding_util.user_prefs_handler.user_collection_preferences.get(
+                "collection_metadata", {}
+            ).get(collection_name, {})
+        )
+        file_id = collection_md.get("file_id", collection_name)
+        index_path = os.path.join(self.data_path, f"{file_id}.index")
+        storage_path = os.path.join(self.data_path, f"{file_id}.db")
+
         _old_storage_path = os.path.join(self.data_path, f"{collection_name}.docs")
         if _check_pickle_file(storage_path) or os.path.exists(_old_storage_path):
             # old Faiss store format
@@ -116,9 +121,15 @@ class FaissStore(VectorDBBase):
         if await self.collection_exists(collection_name):
             logger.info(f"Faiss 集合 '{collection_name}' 已存在。")
             return
-
-        index_path = os.path.join(self.data_path, f"{collection_name}.index")
-        storage_path = os.path.join(self.data_path, f"{collection_name}.db")
+        collection_md = (
+            self.embedding_util.user_prefs_handler.user_collection_preferences.get(
+                "collection_metadata", {}
+            ).get(collection_name, {})
+        )
+        file_id = collection_md.get("file_id", collection_name)
+        await self.embedding_util.user_prefs_handler.save_user_preferences()
+        index_path = os.path.join(self.data_path, f"{file_id}.index")
+        storage_path = os.path.join(self.data_path, f"{file_id}.db")
         self.embedding_utils[collection_name] = AstrBotEmbeddingProviderWrapper(
             embedding_util=self.embedding_util,
             collection_name=collection_name,
@@ -250,8 +261,15 @@ class FaissStore(VectorDBBase):
         def _delete_sync():
             self.vecdbs.pop(collection_name, None)  # 从内存中删除集合
 
-            index_path = os.path.join(self.data_path, f"{collection_name}.index")
-            storage_path = os.path.join(self.data_path, f"{collection_name}.db")
+            collection_md = (
+                self.embedding_util.user_prefs_handler.user_collection_preferences.get(
+                    "collection_metadata", {}
+                ).get(collection_name, {})
+            )
+            file_id = collection_md.get("file_id", collection_name)
+
+            index_path = os.path.join(self.data_path, f"{file_id}.index")
+            storage_path = os.path.join(self.data_path, f"{file_id}.db")
 
             try:
                 if os.path.exists(index_path):

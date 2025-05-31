@@ -174,6 +174,8 @@ class KnowledgeBasePlugin(Star):
                 await self.vector_db.initialize()
                 logger.info(f"向量数据库 '{db_type}' 初始化完成。")
 
+            self.user_prefs_handler.vector_db = self.vector_db
+
             # Web API
             try:
                 self.web_api = KnowledgeBaseWebAPI(

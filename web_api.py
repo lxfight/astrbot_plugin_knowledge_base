@@ -1,5 +1,6 @@
 import os
 import time
+import uuid
 from astrbot.api.star import Context
 from .vector_store.base import VectorDBBase, Document
 from quart import request
@@ -90,6 +91,7 @@ class KnowledgeBaseWebAPI:
                 "emoji": emoji,
                 "description": description,
                 "created_at": int(time.time()),
+                "file_id": f"KBDB_{str(uuid.uuid4())}",  # 文件 ID
                 "origin": "astrbot-webui",
                 "embedding_provider_id": embedding_provider_id,  # AstrBot 嵌入提供商 ID
             }
