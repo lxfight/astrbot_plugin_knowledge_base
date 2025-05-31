@@ -19,7 +19,7 @@ def _check_pickle_file(file_path: str) -> bool:
     """检查文件是否为 Pickle 格式"""
     try:
         with open(file_path, "rb") as f:
-            magic = f.read(4)
+            magic = f.read(2)
             return magic == b"\x80\x04"
     except Exception:
         return False
@@ -80,15 +80,15 @@ class FaissStore(VectorDBBase):
     async def _load_collection(self, collection_name: str):
         index_path = os.path.join(self.data_path, f"{collection_name}.index")
         storage_path = os.path.join(self.data_path, f"{collection_name}.db")
-
-        if _check_pickle_file(storage_path):
+        _old_storage_path = os.path.join(self.data_path, f"{collection_name}.docs")
+        if _check_pickle_file(storage_path) or os.path.exists(_old_storage_path):
             # old Faiss store format
             self._old_collections[collection_name] = collection_name
-            if not self.old_faiss_store:
-                self.old_faiss_store = OldFaissStore(
+            if not self._old_faiss_store:
+                self._old_faiss_store = OldFaissStore(
                     self.embedding_util, self.data_path
                 )
-                await self.old_faiss_store.initialize()
+                await self._old_faiss_store.initialize()
             return
 
         try:
@@ -284,5 +284,5 @@ class FaissStore(VectorDBBase):
         self.vecdbs.clear()
         logger.info("所有 Faiss 集合已关闭。")
 
-        if self.old_faiss_store:
-            await self.old_faiss_store.close()
+        if self._old_faiss_store:
+            await self._old_faiss_store.close()

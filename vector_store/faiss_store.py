@@ -21,7 +21,7 @@ def _check_pickle_file(file_path: str) -> bool:
     """检查文件是否为 Pickle 格式"""
     try:
         with open(file_path, "rb") as f:
-            magic = f.read(4)
+            magic = f.read(2)
             return magic == b"\x80\x04"
     except Exception:
         return False
