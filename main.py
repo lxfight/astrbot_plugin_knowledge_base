@@ -1,7 +1,7 @@
 # astrbot_plugin_knowledge_base/main.py
 import os
 import asyncio
-from typing import Optional, Union
+from typing import Optional
 
 from astrbot.api import logger, AstrBotConfig
 from astrbot.api.event import filter, AstrMessageEvent
@@ -21,6 +21,7 @@ from .utils.embedding import EmbeddingUtil, EmbeddingSolutionHelper
 from .utils.text_splitter import TextSplitterUtil
 from .utils.file_parser import FileParser, LLM_Config
 from .vector_store.base import VectorDBBase
+
 if VERSION < "3.5.13":
     logger.info("建议升级至 AstrBot v3.5.13 或更高版本。")
     from .vector_store.faiss_store import FaissStore
@@ -43,7 +44,7 @@ from .commands import (
     constants.PLUGIN_REGISTER_NAME,
     "lxfight",
     "一个支持多种向量数据库的知识库插件",
-    "0.5.0",
+    "0.5.4",
     "https://github.com/lxfight/astrbot_plugin_knowledge_base",
 )
 class KnowledgeBasePlugin(Star):
@@ -129,8 +130,7 @@ class KnowledgeBasePlugin(Star):
 
             # File Parser
             self.llm_config = LLM_Config(
-                context=self.context,
-                status=self.config.get("LLM_model")
+                context=self.context, status=self.config.get("LLM_model")
             )
             self.file_parser = FileParser(self.llm_config)
             logger.info("文件解析器初始化完成。")
@@ -143,9 +143,7 @@ class KnowledgeBasePlugin(Star):
                 faiss_full_path = os.path.join(
                     self.persistent_data_root_path, faiss_subpath
                 )
-                self.vector_db = FaissStore(
-                    self.embedding_util, faiss_full_path
-                )
+                self.vector_db = FaissStore(self.embedding_util, faiss_full_path)
             elif db_type == "milvus_lite":
                 milvus_lite_subpath = self.config.get(
                     "milvus_lite_db_subpath", "milvus_lite_data/milvus_lite.db"
@@ -187,7 +185,10 @@ class KnowledgeBasePlugin(Star):
                     plugin_config=self.config,
                 )
             except Exception as e:
-                logger.warning(f"知识库 WebAPI 初始化失败，可能导致无法在 WebUI 操作知识库。原因：{e}", exc_info=True)
+                logger.warning(
+                    f"知识库 WebAPI 初始化失败，可能导致无法在 WebUI 操作知识库。原因：{e}",
+                    exc_info=True,
+                )
 
             logger.info("知识库插件初始化成功。")
 
@@ -348,7 +349,12 @@ class KnowledgeBasePlugin(Star):
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @kb_group.command("delete", alias={"删除"})
-    async def kb_delete_collection(self, event: AstrMessageEvent, collection_name: str):
+    async def kb_delete_collection(
+        self,
+        event: AstrMessageEvent,
+        collection_name: str,
+        confirm: Optional[str] = None,
+    ):
         """删除一个知识库及其所有内容 (危险操作! 仅管理员)。"""
         if not await self._ensure_initialized():
             yield event.plain_result("知识库插件未初始化，请联系管理员。")
@@ -362,6 +368,22 @@ class KnowledgeBasePlugin(Star):
 
         if not await self.vector_db.collection_exists(collection_name):
             yield event.plain_result(f"知识库 '{collection_name}' 不存在。")
+            return
+
+        if event.is_private_chat():
+            if confirm != "--confirm":
+                yield event.plain_result(
+                    f"⚠️ 操作确认 ⚠️\n"
+                    f"此操作将永久删除知识库 '{collection_name}' 及其包含的所有数据！此操作无法撤销！\n"
+                    f"当前处于私聊环境，指令与群聊中有所不同。\n\n"
+                    f"如果您确定要继续，请再次执行命令并添加 `--confirm` 参数:\n"
+                    f"`/kb delete {collection_name} --confirm`"
+                )
+                return
+            # 私聊中删除
+            await manage_commands.handle_delete_collection_logic(
+                self, event, collection_name
+            )
             return
 
         confirmation_phrase = f"确认删除{collection_name}"
