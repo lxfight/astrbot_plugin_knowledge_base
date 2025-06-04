@@ -68,6 +68,7 @@ class FaissStore(VectorDBBase):
         self._old_faiss_store: OldFaissStore = None
         self._old_collections = {}
         self.embedding_utils: Dict[str, AstrBotEmbeddingProviderWrapper] = {}
+        self.filename_map: dict = {} # filename -> collection_name 的映射
         os.makedirs(self.data_path, exist_ok=True)
 
     async def initialize(self):
@@ -76,14 +77,15 @@ class FaissStore(VectorDBBase):
         logger.info(f"Faiss 存储初始化完成。已加载集合: {list(self.vecdbs.keys())}")
 
     async def _load_collection(self, collection_name: str):
-        collection_md = (
-            self.embedding_util.user_prefs_handler.user_collection_preferences.get(
-                "collection_metadata", {}
-            ).get(collection_name, {})
-        )
-        file_id = collection_md.get("file_id", collection_name)
-        index_path = os.path.join(self.data_path, f"{file_id}.index")
-        storage_path = os.path.join(self.data_path, f"{file_id}.db")
+        logger.info(f"加载 Faiss 集合: {collection_name}")
+        true_coll_name = self.embedding_util.user_prefs_handler.get_collection_name_by_file_id(collection_name)
+        if true_coll_name:
+            index_path = os.path.join(self.data_path, f"{collection_name}.index")
+            storage_path = os.path.join(self.data_path, f"{collection_name}.db")
+            collection_name = true_coll_name
+        else:
+            index_path = os.path.join(self.data_path, f"{collection_name}.index")
+            storage_path = os.path.join(self.data_path, f"{collection_name}.db")
 
         _old_storage_path = os.path.join(self.data_path, f"{collection_name}.docs")
         if _check_pickle_file(storage_path) or os.path.exists(_old_storage_path):
@@ -106,6 +108,7 @@ class FaissStore(VectorDBBase):
                 index_store_path=index_path,
                 embedding_provider=self.embedding_utils[collection_name],
             )
+            self.filename_map[collection_name] = collection_name # 记录文件名和集合名的映射
             await self.vecdbs[collection_name].initialize()
         except Exception as e:
             logger.error(f"加载知识库集合(FAISS) '{collection_name}' 时出错: {e}")
@@ -285,7 +288,7 @@ class FaissStore(VectorDBBase):
         return await asyncio.to_thread(_delete_sync)
 
     async def list_collections(self) -> List[str]:
-        return list(self.vecdbs.keys()) + list(self._old_collections.keys())
+        return list(self.filename_map.values()) + list(self._old_collections.keys())
 
     async def count_documents(self, collection_name: str) -> int:
         if not await self.collection_exists(collection_name):
