@@ -79,13 +79,10 @@ class FaissStore(VectorDBBase):
     async def _load_collection(self, collection_name: str):
         logger.info(f"加载 Faiss 集合: {collection_name}")
         true_coll_name = self.embedding_util.user_prefs_handler.get_collection_name_by_file_id(collection_name)
-        if true_coll_name:
-            index_path = os.path.join(self.data_path, f"{collection_name}.index")
-            storage_path = os.path.join(self.data_path, f"{collection_name}.db")
-            collection_name = true_coll_name
-        else:
-            index_path = os.path.join(self.data_path, f"{collection_name}.index")
-            storage_path = os.path.join(self.data_path, f"{collection_name}.db")
+        if not true_coll_name:
+            true_coll_name = collection_name
+        index_path = os.path.join(self.data_path, f"{collection_name}.index")
+        storage_path = os.path.join(self.data_path, f"{collection_name}.db")
 
         _old_storage_path = os.path.join(self.data_path, f"{collection_name}.docs")
         if _check_pickle_file(storage_path) or os.path.exists(_old_storage_path):
@@ -108,7 +105,7 @@ class FaissStore(VectorDBBase):
                 index_store_path=index_path,
                 embedding_provider=self.embedding_utils[collection_name],
             )
-            self.filename_map[collection_name] = collection_name # 记录文件名和集合名的映射
+            self.filename_map[collection_name] = true_coll_name # 记录文件名和集合名的映射
             await self.vecdbs[collection_name].initialize()
         except Exception as e:
             logger.error(f"加载知识库集合(FAISS) '{collection_name}' 时出错: {e}")
@@ -142,6 +139,7 @@ class FaissStore(VectorDBBase):
             index_store_path=index_path,
             embedding_provider=self.embedding_utils[collection_name],
         )
+        self.filename_map[file_id] = collection_name  # 记录文件名和集合名的映射
         await self.vecdbs[collection_name].initialize()
         await self.vecdbs[collection_name].embedding_storage.save_index()
         logger.info(f"Faiss 集合 '{collection_name}' 创建成功。")
