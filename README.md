@@ -2,13 +2,12 @@
 <h1 align="center">🚀 AstrBot 知识库插件 🚀</h1>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/oyxning/astrbot_plugin_knowledge_base/refs/heads/master/knowledge_baselogo.png" alt="LumineStory Banner" width="100%" style="border-radius: 8px;" />
-</p>
-
-<p align="center">
 <strong>为你的 AstrBot 注入专属知识，打造更智能的对话体验！</strong>
 </p>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/oyxning/astrbot_plugin_knowledge_base/refs/heads/master/knowledge_baselogo.png" alt="LumineStory Banner" width="100%" style="border-radius: 8px;" />
+</p>
 
 <p align="center">
 <code>astrbot_plugin_knowledge_base</code> 是一个为 <a href="https://github.com/Soulter/AstrBot">AstrBot</a> 聊天机器人框架量身定制的强大知识库插件。
