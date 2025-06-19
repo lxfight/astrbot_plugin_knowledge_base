@@ -1,4 +1,3 @@
----
 <h1 align="center">🚀 AstrBot 知识库插件 🚀</h1>
 
 <p align="center">
