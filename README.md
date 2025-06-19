@@ -2,6 +2,10 @@
 <h1 align="center">🚀 AstrBot 知识库插件 🚀</h1>
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/oyxning/astrbot_plugin_knowledge_base/refs/heads/master/knowledge_baselogo.png" alt="LumineStory Banner" width="100%" style="border-radius: 8px;" />
+</p>
+
+<p align="center">
 <strong>为你的 AstrBot 注入专属知识，打造更智能的对话体验！</strong>
 </p>
 
