@@ -9,12 +9,11 @@
   <img src="https://raw.githubusercontent.com/oyxning/astrbot_plugin_knowledge_base/refs/heads/master/knowledge_baselogo.png" alt="LumineStory Banner" width="100%" style="border-radius: 8px;" />
 </p>
 
----
-
 <code>astrbot_plugin_knowledge_base</code> 是一个为 <a href="https://github.com/Soulter/AstrBot">AstrBot</a> 聊天机器人框架量身定制的强大知识库插件。
 它允许您的机器人连接到自定义的知识源，通过先进的检索增强生成 (RAG) 技术，
 让机器人能够基于准确、具体的私有信息进行对话，而不仅仅依赖预训练模型的通用知识。
 </p>
+
 ---
 
 本项目目前处于公开测试期，期间可能会经历版本的快速迭代。我们欢迎您的试用、反馈与贡献！
