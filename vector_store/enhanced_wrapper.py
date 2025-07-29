@@ -11,7 +11,8 @@ import logging
 from .base import VectorDBBase, Document
 from .enhanced_faiss_store import EnhancedFaissStore
 from .keyword_index import KeywordIndex
-from .rerank_service import HybridReranker, RerankConfig
+from .rerank_service import EnhancedHybridReranker
+from .api_rerank_config import APIRerankConfig
 from .migration_tool import MigrationTool
 from ..utils.embedding import EmbeddingSolutionHelper
 
@@ -21,13 +22,14 @@ class EnhancedVectorStore(VectorDBBase):
     自动处理格式检测和迁移
     """
     
-    def __init__(self, embedding_util: EmbeddingSolutionHelper, data_path: str):
+    def __init__(self, embedding_util: EmbeddingSolutionHelper, data_path: str,
+                 rerank_config: Optional[Dict[str, Any]] = None):
         super().__init__(embedding_util, data_path)
         
         # 初始化组件
         self.enhanced_store = EnhancedFaissStore(embedding_util, data_path)
         self.migration_tool = MigrationTool(data_path)
-        self.reranker = HybridReranker()
+        self.reranker = EnhancedHybridReranker(rerank_config)
         
         # 配置
         self.auto_migrate = True
@@ -246,14 +248,32 @@ def create_enhanced_store(
         from .faiss_store import FaissStore
         return FaissStore(embedding_util, data_path)
 
-# 配置管理
+# 配置管理（更新版）
 class EnhancedStoreConfig:
-    """增强存储配置"""
+    """增强存储配置（支持API重排序）"""
     
     def __init__(self):
         self.auto_migrate = True
         self.use_enhanced_search = True
-        self.rerank_config = RerankConfig()
+        self.rerank_strategy = "auto"  # auto, api, cross_encoder, simple
+        self.rerank_config = {
+            "strategy": "auto",
+            "api": {
+                "provider": "cohere",
+                "api_key": "",
+                "timeout": 30,
+                "max_retries": 3,
+                "enable_cache": True,
+                "cache_ttl": 3600,
+                "fallback_strategy": "simple"
+            },
+            "cross_encoder": {
+                "model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+                "batch_size": 32,
+                "max_length": 512,
+                "use_gpu": False
+            }
+        }
         self.migration_config = {
             "backup_before_migrate": True,
             "validate_after_migrate": True,
@@ -265,11 +285,8 @@ class EnhancedStoreConfig:
         return {
             "auto_migrate": self.auto_migrate,
             "use_enhanced_search": self.use_enhanced_search,
-            "rerank_config": {
-                "model_name": self.rerank_config.model_name,
-                "batch_size": self.rerank_config.batch_size,
-                "use_gpu": self.rerank_config.use_gpu
-            },
+            "rerank_strategy": self.rerank_strategy,
+            "rerank_config": self.rerank_config,
             "migration_config": self.migration_config
         }
     
@@ -279,12 +296,10 @@ class EnhancedStoreConfig:
         config = cls()
         config.auto_migrate = config_dict.get("auto_migrate", True)
         config.use_enhanced_search = config_dict.get("use_enhanced_search", True)
+        config.rerank_strategy = config_dict.get("rerank_strategy", "auto")
         
         if "rerank_config" in config_dict:
-            rerank_config = config_dict["rerank_config"]
-            config.rerank_config.model_name = rerank_config.get("model_name", "cross-encoder/ms-marco-MiniLM-L-6-v2")
-            config.rerank_config.batch_size = rerank_config.get("batch_size", 32)
-            config.rerank_config.use_gpu = rerank_config.get("use_gpu", False)
+            config.rerank_config.update(config_dict["rerank_config"])
         
         if "migration_config" in config_dict:
             config.migration_config.update(config_dict["migration_config"])
