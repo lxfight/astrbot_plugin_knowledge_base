@@ -1,6 +1,6 @@
 """
 重排序服务实现
-支持Cross-Encoder模型和多种重排序策略
+支持Cross-Encoder模型、API服务和多种重排序策略
 """
 
 import asyncio
@@ -17,6 +17,8 @@ except ImportError:
     logging.warning("sentence-transformers库未安装，Cross-Encoder功能将不可用")
 
 from .base import Document
+from .api_rerank_config import APIRerankConfig
+from .api_rerank_service import APIRerankService
 
 @dataclass
 class RerankConfig:
@@ -226,18 +228,130 @@ class HybridReranker:
             "simple_reranker_weights": self.simple_reranker.weights
         }
 
-# 重排序策略工厂
+# API重排序服务
+class APIReranker:
+    """API重排序器"""
+    
+    def __init__(self, config: Optional[APIRerankConfig] = None):
+        self.api_service = APIRerankService(config)
+    
+    async def initialize(self):
+        """初始化API重排序器"""
+        await self.api_service.initialize()
+    
+    async def rerank(
+        self,
+        query: str,
+        documents: List[Tuple[Document, float]],
+        top_k: int = 5
+    ) -> List[Tuple[Document, float]]:
+        """使用API服务重排序"""
+        return await self.api_service.rerank(query, documents, top_k)
+    
+    def get_config(self) -> Dict[str, Any]:
+        """获取配置信息"""
+        return self.api_service.get_config()
+
+
+# 增强的混合重排序器
+class EnhancedHybridReranker:
+    """增强的混合重排序器，支持API、Cross-Encoder和简单重排序"""
+    
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        config = config or {}
+        
+        # 本地Cross-Encoder配置
+        self.cross_encoder = RerankService(
+            RerankConfig(**config.get("cross_encoder", {}))
+        )
+        
+        # API重排序配置
+        self.api_reranker = APIReranker(
+            APIRerankConfig(**config.get("api", {}))
+        )
+        
+        # 简单重排序
+        self.simple_reranker = SimpleReranker()
+        
+        # 策略配置
+        self.strategy = config.get("strategy", "auto")  # auto, api, cross_encoder, simple
+        self.use_cross_encoder = SENTENCE_TRANSFORMERS_AVAILABLE
+    
+    async def initialize(self):
+        """初始化所有重排序器"""
+        await self.api_reranker.initialize()
+        
+        if self.use_cross_encoder:
+            await self.cross_encoder.initialize()
+    
+    async def rerank(
+        self,
+        query: str,
+        documents: List[Tuple[Document, float]],
+        keyword_scores: Optional[List[Tuple[str, float]]] = None,
+        top_k: int = 5,
+        strategy: str = None
+    ) -> List[Tuple[Document, float]]:
+        """增强的混合重排序"""
+        if not documents:
+            return []
+        
+        strategy = strategy or self.strategy
+        
+        if strategy == "api":
+            # 优先使用API重排序
+            return await self.api_reranker.rerank(query, documents, top_k)
+        
+        elif strategy == "cross_encoder" and self.use_cross_encoder:
+            # 使用本地Cross-Encoder
+            return await self.cross_encoder.rerank(query, documents, top_k)
+        
+        elif strategy == "simple":
+            # 使用简单重排序
+            return await self.simple_reranker.rerank(
+                query, documents, keyword_scores, top_k
+            )
+        
+        else:  # auto
+            # 自动选择最佳策略
+            api_config = self.api_reranker.api_service.config
+            if api_config.validate():
+                # API配置有效，优先使用API
+                return await self.api_reranker.rerank(query, documents, top_k)
+            elif self.use_cross_encoder and self.cross_encoder._initialized:
+                # 使用本地Cross-Encoder
+                return await self.cross_encoder.rerank(query, documents, top_k)
+            else:
+                # 降级到简单重排序
+                return await self.simple_reranker.rerank(
+                    query, documents, keyword_scores, top_k
+                )
+    
+    def get_config(self) -> Dict[str, Any]:
+        """获取配置信息"""
+        return {
+            "strategy": self.strategy,
+            "api_config": self.api_reranker.get_config(),
+            "cross_encoder_available": self.use_cross_encoder,
+            "cross_encoder_info": self.cross_encoder.get_model_info() if self.use_cross_encoder else None,
+            "simple_reranker_weights": self.simple_reranker.weights
+        }
+
+
+# 重排序策略工厂（更新版）
 class RerankStrategyFactory:
-    """重排序策略工厂"""
+    """重排序策略工厂（支持API重排序）"""
     
     _strategies = {
         'cross_encoder': RerankService,
         'simple': SimpleReranker,
-        'hybrid': HybridReranker
+        'hybrid': HybridReranker,
+        'api': APIReranker,
+        'enhanced_hybrid': EnhancedHybridReranker
     }
     
     @classmethod
-    def create(cls, strategy: str, config: Optional[RerankConfig] = None):
+    def create(cls, strategy: str, config: Optional[Any] = None):
         """创建重排序策略"""
         if strategy not in cls._strategies:
             raise ValueError(f"不支持的重排序策略: {strategy}")
