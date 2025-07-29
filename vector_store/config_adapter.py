@@ -62,14 +62,15 @@ def get_api_rerank_config_from_astrbot(config: dict) -> APIRerankConfig:
     Returns:
         APIRerankConfig实例
     """
+    rerank_config = config.get("rerank_config", {})
     return APIRerankConfig(
-        provider=config.get("rerank_api_provider", "cohere"),
-        api_key=config.get("rerank_api_key", ""),
-        api_url=config.get("rerank_api_url", ""),
-        timeout=config.get("rerank_timeout", 30),
-        max_retries=config.get("rerank_max_retries", 3),
-        enable_cache=config.get("rerank_enable_cache", True),
-        cache_ttl=config.get("rerank_cache_ttl", 3600)
+        provider=rerank_config.get("api_provider", "cohere"),
+        api_key=rerank_config.get("api_key", ""),
+        api_url=rerank_config.get("api_url", ""),
+        timeout=rerank_config.get("timeout", 30),
+        max_retries=rerank_config.get("max_retries", 3),
+        enable_cache=rerank_config.get("enable_cache", True),
+        cache_ttl=rerank_config.get("cache_ttl", 3600)
     )
 
 
@@ -83,16 +84,17 @@ def validate_rerank_config(config: dict) -> tuple[bool, str]:
     Returns:
         (是否有效, 错误信息)
     """
-    strategy = config.get("rerank_strategy", "auto")
+    rerank_config = config.get("rerank_config", {})
+    strategy = rerank_config.get("strategy", "auto")
     if strategy not in ["auto", "api", "cross_encoder", "simple"]:
         return False, f"无效的重排序策略: {strategy}"
     
     if strategy in ["api", "auto"]:
-        provider = config.get("rerank_api_provider", "cohere")
+        provider = rerank_config.get("api_provider", "cohere")
         if provider not in ["cohere", "jina", "custom"]:
             return False, f"无效的API提供商: {provider}"
         
-        if provider != "custom" and not config.get("rerank_api_key"):
+        if provider != "custom" and not rerank_config.get("api_key"):
             # 检查环境变量
             env_keys = {
                 "cohere": "COHERE_API_KEY",
@@ -114,20 +116,21 @@ def get_rerank_config_summary(config: dict) -> dict:
     Returns:
         配置摘要字典
     """
-    strategy = config.get("rerank_strategy", "auto")
-    provider = config.get("rerank_api_provider", "cohere")
+    rerank_config = config.get("rerank_config", {})
+    strategy = rerank_config.get("strategy", "auto")
+    provider = rerank_config.get("api_provider", "cohere")
     
     summary = {
         "strategy": strategy,
         "provider": provider if strategy in ["api", "auto"] else None,
-        "cache_enabled": config.get("rerank_enable_cache", True),
-        "timeout": config.get("rerank_timeout", 30),
-        "max_retries": config.get("rerank_max_retries", 3)
+        "cache_enabled": rerank_config.get("enable_cache", True),
+        "timeout": rerank_config.get("timeout", 30),
+        "max_retries": rerank_config.get("max_retries", 3)
     }
     
     # 检查API密钥状态
     if strategy in ["api", "auto"]:
-        api_key = config.get("rerank_api_key")
+        api_key = rerank_config.get("api_key")
         if not api_key:
             env_keys = {
                 "cohere": "COHERE_API_KEY",

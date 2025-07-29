@@ -76,11 +76,6 @@ class KnowledgeBasePlugin(Star):
     async def _initialize_components(self):
         try:
             logger.info("知识库插件开始初始化...")
-            # User Preferences Handler
-            self.user_prefs_handler = UserPrefsHandler(
-                self.user_prefs_path, self.vector_db, self.config
-            )
-            await self.user_prefs_handler.load_user_preferences()
 
             # Embedding Util
             try:
@@ -185,12 +180,16 @@ class KnowledgeBasePlugin(Star):
             else:
                 logger.error(f"不支持的向量数据库类型: {db_type}，请检查配置。")
                 return
+            
+            # User Preferences Handler
+            self.user_prefs_handler = UserPrefsHandler(
+                self.user_prefs_path, self.vector_db, self.config
+            )
+            await self.user_prefs_handler.load_user_preferences()
 
             if self.vector_db:
                 await self.vector_db.initialize()
                 logger.info(f"向量数据库 '{db_type}' 初始化完成。")
-
-            self.user_prefs_handler.vector_db = self.vector_db
 
             # Web API
             try:
