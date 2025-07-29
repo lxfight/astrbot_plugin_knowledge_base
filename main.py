@@ -26,7 +26,7 @@ if VERSION < "3.5.13":
     logger.info("建议升级至 AstrBot v3.5.13 或更高版本。")
     from .vector_store.faiss_store import FaissStore
 else:
-    from .vector_store.astrbot_faiss_store import FaissStore
+    from .vector_store.enhanced_wrapper import EnhancedVectorStore
 from .vector_store.milvus_lite_store import MilvusLiteStore
 from .vector_store.milvus_store import MilvusStore
 from .web_api import KnowledgeBaseWebAPI
@@ -138,12 +138,27 @@ class KnowledgeBasePlugin(Star):
             # Vector DB
             db_type = self.config.get("vector_db_type", "faiss")
 
+            # 构建重排序配置
+            from .vector_store.config_adapter import create_rerank_config_from_astrbot
+            rerank_config = create_rerank_config_from_astrbot(self.config)
+
             if db_type == "faiss":
                 faiss_subpath = self.config.get("faiss_db_subpath", "faiss_data")
                 faiss_full_path = os.path.join(
                     self.persistent_data_root_path, faiss_subpath
                 )
-                self.vector_db = FaissStore(self.embedding_util, faiss_full_path)
+                
+                # 使用增强的向量存储（支持API重排序）
+                if VERSION < "3.5.13":
+                    from .vector_store.faiss_store import FaissStore
+                    self.vector_db = FaissStore(self.embedding_util, faiss_full_path)
+                else:
+                    from .vector_store.enhanced_wrapper import EnhancedVectorStore
+                    self.vector_db = EnhancedVectorStore(
+                        self.embedding_util,
+                        faiss_full_path,
+                        rerank_config=rerank_config
+                    )
             elif db_type == "milvus_lite":
                 milvus_lite_subpath = self.config.get(
                     "milvus_lite_db_subpath", "milvus_lite_data/milvus_lite.db"
@@ -152,10 +167,13 @@ class KnowledgeBasePlugin(Star):
                     self.persistent_data_root_path, milvus_lite_subpath
                 )
                 os.makedirs(os.path.dirname(milvus_lite_full_path), exist_ok=True)
+                
+                # 注意：MilvusLiteStore暂不支持API重排序
                 self.vector_db = MilvusLiteStore(
                     self.embedding_util, milvus_lite_full_path
                 )
             elif db_type == "milvus":
+                # 注意：MilvusStore暂不支持API重排序
                 self.vector_db = MilvusStore(
                     self.embedding_util,
                     data_path="",

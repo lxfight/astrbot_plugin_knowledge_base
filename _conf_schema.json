@@ -4,9 +4,7 @@
         "type": "string",
         "default": "faiss",
         "options": [
-            "faiss",
-            "milvus_lite",
-            "milvus"
+            "faiss"
         ]
     },
     "default_collection_name": {
@@ -14,41 +12,11 @@
         "type": "string",
         "default": "general"
     },
-    "milvus_host": {
-        "description": "Milvus 服务主机",
-        "type": "string",
-        "default": "localhost",
-        "hint": " (仅当 vector_db_type 为 'milvus' 时有效)"
-    },
-    "milvus_port": {
-        "description": "Milvus 服务端口",
-        "type": "string",
-        "default": "19530",
-        "hint": "(仅当 vector_db_type 为 'milvus' 时有效)"
-    },
-    "milvus_user": {
-        "description": "Milvus 用户名",
-        "type": "string",
-        "default": "",
-        "hint": "(可选, 仅当 vector_db_type 为 'milvus' 时有效)"
-    },
-    "milvus_password": {
-        "description": "Milvus 密码",
-        "type": "string",
-        "default": "",
-        "hint": "(可选, 仅当 vector_db_type 为 'milvus' 时有效)"
-    },
     "faiss_db_subpath": {
         "description": "Faiss 索引存储子路径 ",
         "type": "string",
         "default": "faiss_data",
-        "hint": "(相对于持久化数据目录 'AstrBot/data/plugins_data/astrbot_plugin_knowledge_base/', 仅当 vector_db_type 为 'faiss' 时有效)"
-    },
-    "milvus_lite_db_subpath": {
-        "description": "Milvus Lite 数据文件子路径 ",
-        "type": "string",
-        "default": "milvus_lite_data/milvus_lite.db",
-        "hint": "(相对于持久化数据目录 'AstrBot/data/plugins_data/astrbot_plugin_knowledge_base/', 仅当 vector_db_type 为 'milvus_lite' 时有效)"
+        "hint": "(相对于持久化数据目录 'AstrBot/data/plugins_data/astrbot_plugin_knowledge_base/')"
     },
     "text_chunk_size": {
         "description": "文本分块大小 (字符数)",
@@ -99,5 +67,71 @@
         "type": "int",
         "default": 1024,
         "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。（此项为 AstrBot 版本 < 3.5.13 用户设计，其他版本用户请忽略）"
+    },
+    "rerank_config": {
+        "description": "重排序配置（API服务优先，轻量化处理）",
+        "type": "object",
+        "hint": "配置API重排序服务，实现零依赖启动和轻量化处理",
+        "items": {
+            "strategy": {
+                "description": "重排序策略",
+                "type": "string",
+                "default": "auto",
+                "options": [
+                    "auto",
+                    "api",
+                    "cross_encoder",
+                    "simple"
+                ],
+                "hint": "auto: 自动选择最佳策略；api: 使用API重排序；cross_encoder: 使用本地Cross-Encoder；simple: 使用简单重排序"
+            },
+            "api_provider": {
+                "description": "API重排序服务提供商",
+                "type": "string",
+                "default": "cohere",
+                "options": [
+                    "cohere",
+                    "jina",
+                    "custom"
+                ],
+                "hint": "仅当 strategy 为 'api' 或 'auto' 时有效"
+            },
+            "api_key": {
+                "description": "API重排序服务密钥",
+                "type": "string",
+                "default": "",
+                "hint": "对应提供商的API密钥，支持环境变量：COHERE_API_KEY, JINA_API_KEY"
+            },
+            "api_url": {
+                "description": "自定义API重排序服务地址",
+                "type": "string",
+                "default": "",
+                "hint": "仅当 api_provider 为 'custom' 时有效"
+            },
+            "enable_cache": {
+                "description": "启用API重排序缓存",
+                "type": "bool",
+                "default": true,
+                "hint": "缓存API重排序结果以提高性能"
+            },
+            "cache_ttl": {
+                "description": "API重排序缓存时间(秒)",
+                "type": "int",
+                "default": 3600,
+                "hint": "缓存过期时间，单位秒"
+            },
+            "timeout": {
+                "description": "API重排序超时时间(秒)",
+                "type": "int",
+                "default": 30,
+                "hint": "API请求超时时间"
+            },
+            "max_retries": {
+                "description": "API重排序最大重试次数",
+                "type": "int",
+                "default": 3,
+                "hint": "API请求失败时的最大重试次数"
+            }
+        }
     }
 }

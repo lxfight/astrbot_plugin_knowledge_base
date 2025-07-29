@@ -29,6 +29,13 @@ from .api_clients import APIClientFactory
 
 # 配置和示例
 from .config_examples import CONFIG_EXAMPLES, get_config_example
+from .config_adapter import (
+    create_rerank_config_from_astrbot,
+    create_reranker_from_astrbot_config,
+    get_api_rerank_config_from_astrbot,
+    validate_rerank_config,
+    get_rerank_config_summary
+)
 
 # 增强包装器
 from .enhanced_wrapper import EnhancedVectorStore, EnhancedStoreConfig
@@ -63,6 +70,13 @@ __all__ = [
     # 配置和示例
     'CONFIG_EXAMPLES',
     'get_config_example',
+    
+    # 配置适配器
+    'create_rerank_config_from_astrbot',
+    'create_reranker_from_astrbot_config',
+    'get_api_rerank_config_from_astrbot',
+    'validate_rerank_config',
+    'get_rerank_config_summary',
     
     # 增强包装器
     'EnhancedVectorStore',
