@@ -1,3 +1,4 @@
+import gc  # 添加垃圾回收模块
 from typing import List, Optional, Tuple
 from astrbot.api import logger
 from astrbot.api.star import Context
@@ -116,6 +117,10 @@ class EmbeddingUtil:
                     embeddings_for_batch = [item.embedding for item in response.data]
                     for idx, (original_idx, _) in enumerate(batch_indices_texts):
                         final_embeddings[original_idx] = embeddings_for_batch[idx]
+
+                    # 内存优化：及时清理批次数据
+                    del embeddings_for_batch
+                    del response
                 else:
                     logger.error(
                         f"批次 {batch_start // batch_size + 1} 获取 Embeddings 失败："
@@ -124,6 +129,14 @@ class EmbeddingUtil:
                     )
                     # 继续处理下一批次，而不是直接返回
                     continue
+
+                # 清理批次临时数据
+                del batch_texts
+                del batch_indices_texts
+
+                # 每5个批次触发一次垃圾回收
+                if (batch_start // batch_size + 1) % 5 == 0:
+                    gc.collect()
 
             except APIStatusError as e:
                 logger.error(
@@ -159,6 +172,10 @@ class EmbeddingUtil:
         # 检查是否所有有效文本都未能生成嵌入
         if all(embedding is None for embedding in final_embeddings):
             logger.error("所有批次均未能成功生成嵌入，请检查 API 配置或网络连接。")
+
+        # 最终内存清理
+        del valid_texts_with_indices
+        gc.collect()
 
         return final_embeddings
 

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # /vector_store/milvus_lite_store.py
+import gc  # 添加垃圾回收模块
 from typing import List, Optional, Tuple, Dict, Any
 from .base import (
     VectorDBBase,

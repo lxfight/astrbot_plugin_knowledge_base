@@ -413,7 +413,7 @@ class FaissStore(VectorDBBase):
             # 当前实现：逐个插入
             all_doc_ids = []
             try:
-                for doc in batch.documents:
+                for idx, doc in enumerate(batch.documents):
                     try:
                         # 这是主要的性能瓶颈：每次插入都是一个独立的 embedding 请求和数据库写入。
                         doc_id = await vecdb.insert(
@@ -421,16 +421,28 @@ class FaissStore(VectorDBBase):
                             metadata=doc.metadata,
                         )
                         all_doc_ids.append(doc_id)
+
+                        # 内存优化：立即清理已处理的文档引用
+                        doc.text_content = None
+                        doc.metadata = None
+                        doc.embedding = None
+
                     except Exception as e:
-                        excerpt = doc.text_content[:100].replace("\n", "")
+                        excerpt = doc.text_content[:100].replace("\n", "") if doc.text_content else "无内容"
                         logger.error(
                             f"向 Faiss 集合 '{collection_name}' 添加文档 '{excerpt}...' 时发生异常: {e}"
                         )
                         # 单个文档失败不应中断整个批次
+
+                    # 每处理10个文档触发一次小规模垃圾回收
+                    if (idx + 1) % 10 == 0:
+                        gc.collect()
+
             finally:
                 # 强制清理批次中的文档引用，帮助垃圾回收
                 batch.documents.clear()
                 del batch
+                gc.collect()  # 批次结束后强制垃圾回收
             return all_doc_ids
 
     async def add_documents(
@@ -501,7 +513,7 @@ class FaissStore(VectorDBBase):
 
             # 当任务数量达到分块大小，或这是最后一个批次时，处理这一块任务
             if len(tasks) >= self.task_chunk_size or i == num_batches - 1:
-                logger.debug(f"处理任务块，数量: {len(tasks)}")
+                logger.debug(f"处理任务块 {i//self.task_chunk_size + 1}，任务数量: {len(tasks)}")
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
                 for result in results:
@@ -513,10 +525,18 @@ class FaissStore(VectorDBBase):
                     else:
                         all_doc_ids.extend(result)
 
-                # 清空任务列表以进行下一块处理
-                tasks = []
+                # 内存优化：清理任务结果和引用
+                del results
 
-        # 最终垃圾回收
+                # 清空任务列表以进行下一块处理
+                tasks.clear()  # 使用clear()更彻底
+
+                # 每处理完一个任务块就触发垃圾回收
+                gc.collect()
+                logger.debug(f"处理完任务块，触发垃圾回收。当前总文档数: {len(all_doc_ids)}")
+
+        # 最终内存清理
+        del documents  # 清理原始文档列表
         gc.collect()
 
         # 添加文档后保存索引

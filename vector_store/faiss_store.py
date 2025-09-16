@@ -2,6 +2,7 @@ import faiss
 import numpy as np
 import os
 import pickle
+import gc  # 添加垃圾回收模块
 from typing import List, Dict, Tuple
 from .base import (
     VectorDBBase,
@@ -226,6 +227,19 @@ class FaissStore(VectorDBBase):
                 )
                 all_doc_ids.extend(batch_added_ids)
                 logger.debug(f"{log_prefix} 成功添加了 {len(batch_added_ids)} 个文档。")
+
+                # 内存优化：及时清理批次数据
+                del current_batch_texts_to_embed
+                del docs_needing_embedding_in_batch
+                del batch_embeddings_generated
+                del valid_embeddings_for_batch
+                del processed_documents_for_batch
+                del current_docs_in_batch
+
+                # 每10个批次触发一次垃圾回收
+                if processed_batches_count % 10 == 0:
+                    gc.collect()
+                    logger.debug(f"已处理 {processed_batches_count} 个批次，触发垃圾回收")
 
                 processed_batches_count += 1
                 processing_queue.task_done()
