@@ -118,5 +118,40 @@
         "type": "int",
         "default": 1024,
         "hint": "当在 WebUI 知识库页面指定了知识库的 AstrBot 嵌入模型提供商时，本配置失效。（此项为 AstrBot 版本 < 3.5.13 用户设计，其他版本用户请忽略）"
+    },
+    "llm_rag_settings": {
+        "description": "LLM RAG 增强设置",
+        "hint": "控制知识库如何增强 LLM 回答的相关参数",
+        "type": "object",
+        "items": {
+            "min_similarity_score": {
+                "description": "相似度阈值",
+                "hint": "只有相似度分数高于此阈值的文档才会被用于增强回答，范围 0.0-1.0，数值越高要求越严格",
+                "type": "float",
+                "default": 0.5
+            },
+            "insertion_method": {
+                "description": "内容插入方式",
+                "hint": "prepend_prompt: 添加到用户问题前；system_prompt: 添加到系统提示中",
+                "type": "string",
+                "default": "prepend_prompt",
+                "options": [
+                    "prepend_prompt",
+                    "system_prompt"
+                ]
+            },
+            "context_template": {
+                "description": "上下文模板",
+                "hint": "用于格式化检索到的知识库内容，{retrieved_contexts} 会被替换为实际检索结果",
+                "type": "string",
+                "default": "这是相关的知识库信息，请参考这些信息来回答用户的问题：\n{retrieved_contexts}"
+            },
+            "max_insert_length": {
+                "description": "最大插入长度",
+                "hint": "限制插入到 LLM 请求中的知识库内容最大字符数，防止上下文过长",
+                "type": "int",
+                "default": 200000
+            }
+        }
     }
 }

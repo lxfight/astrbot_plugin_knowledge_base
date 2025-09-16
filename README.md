@@ -189,10 +189,10 @@
 
 <details open>
    <summary>
-    <h3><img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Herb.png" alt="Herb" width="25" height="25" /> v0.5.7 - Faiss 内存优化与缓存机制 <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Herb.png" alt="Herb" width="25" height="25" /></h3>
+    <h3><img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Herb.png" alt="Herb" width="25" height="25" /> v0.5.9 - 最新稳定版本 <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Herb.png" alt="Herb" width="25" height="25" /></h3>
   </summary>
    <blockquote>
-    <p>本次更新重点优化了使用 Faiss 作为向量存储时的内存占用问题，引入智能缓存机制，提升插件长时间运行的资源效率。</p>
+    <p>当前最新版本，包含 Faiss 内存优化、配置项条件判断显示、重排序模型支持等功能改进。</p>
   </blockquote>
    <ul>
     <li>

@@ -87,13 +87,15 @@ async def enhance_request_with_kb(
         )
         return
 
-    kb_search_top_k = plugin_config.get("kb_llm_search_top_k", 3)
-    kb_insertion_method = plugin_config.get("kb_llm_insertion_method", "prepend_prompt")
-    kb_context_template = plugin_config.get(
-        "kb_llm_context_template",
+    # 获取LLM RAG配置
+    llm_rag_config = plugin_config.get("llm_rag_settings", {})
+    kb_search_top_k = plugin_config.get("search_top_k", 3)  # 复用现有的搜索配置
+    kb_insertion_method = llm_rag_config.get("insertion_method", "prepend_prompt")
+    kb_context_template = llm_rag_config.get(
+        "context_template",
         "这是相关的知识库信息，请参考这些信息来回答用户的问题：\n{retrieved_contexts}",
     )
-    min_similarity_score = plugin_config.get("kb_llm_min_similarity_score", 0.5)
+    min_similarity_score = llm_rag_config.get("min_similarity_score", 0.5)
 
     user_query = req.prompt
     if not user_query or not user_query.strip():
@@ -144,9 +146,7 @@ async def enhance_request_with_kb(
         retrieved_contexts=formatted_contexts
     )
 
-    max_kb_insert_length = plugin_config.get(
-        "kb_llm_max_insert_length", 200000
-    )  # Increased limit as per original
+    max_kb_insert_length = llm_rag_config.get("max_insert_length", 200000)
     if len(knowledge_to_insert) > max_kb_insert_length:
         logger.warning(
             f"知识库插入内容过长 ({len(knowledge_to_insert)} chars)，将被截断至 {max_kb_insert_length} chars。"
